@@ -1,121 +1,84 @@
-import { useState } from 'react'
-import heroImg from './assets/hero.png'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
 import './App.css'
 
+const posts = [
+  {
+    id: 'finding-your-focus',
+    title: 'Finding Your Focus',
+    subtitle: '2023-06-15',
+    description:
+      'A few simple ways to make room for deeper work and bring a little more intention to your day.',
+    content: [
+      'Focus can feel hard to find when every notification and new task asks for our attention. Instead of trying to do everything at once, choose one thing that matters and give it your full attention.',
+      'A short pause, a clear workspace, and a small, realistic plan can make it easier to begin. Progress does not have to be dramatic; a little uninterrupted time can be enough to build momentum.',
+    ],
+  },
+  {
+    id: 'small-moments',
+    title: 'The Beauty of Small Moments',
+    subtitle: '2023-06-10',
+    description:
+      'A reminder to slow down, notice the everyday details, and find inspiration in the world around you.',
+    content: [
+      'Some of the moments we remember most are also the quietest: warm light across a room, a familiar song, or a conversation that makes us laugh. They are easy to miss when we are already thinking about what comes next.',
+      'Taking a moment to notice what is around us can make an ordinary day feel a little richer. Inspiration is not always somewhere far away; sometimes it is already here.',
+    ],
+  },
+]
+
 function App() {
-  const [count, setCount] = useState(0)
+  const postId = new URLSearchParams(window.location.search).get('post')
+  const selectedPost = posts.find((post) => post.id === postId)
+
+  if (postId) {
+    return (
+      <main className="blog-home post-detail">
+        <a className="back-link" href="/">
+          ← All posts
+        </a>
+        {selectedPost ? (
+          <article>
+            <header className="detail-header">
+              <p className="post-subtitle">{selectedPost.subtitle}</p>
+              <h1>{selectedPost.title}</h1>
+              <p className="detail-description">{selectedPost.description}</p>
+            </header>
+            <div className="article-body">
+              {selectedPost.content.map((paragraph) => (
+                <p key={paragraph}>{paragraph}</p>
+              ))}
+            </div>
+          </article>
+        ) : (
+          <h1 className="not-found">Post not found</h1>
+        )}
+      </main>
+    )
+  }
 
   return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.jsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
-        <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
+    <main className="blog-home">
+      <header className="page-header">
+        <h1>blog</h1>
+      </header>
+
+      <section className="post-list" aria-label="Latest blog posts">
+        {posts.map((post, index) => (
+          <article className="post" id={post.id} key={post.id}>
+            <span className="post-number" aria-hidden="true">
+              0{index + 1}
+            </span>
+            <div className="post-content">
+              <h2>{post.title}</h2>
+              <p className="post-subtitle">{post.subtitle}</p>
+              <p>{post.description}</p>
+              <a className="read-more" href={`/?post=${post.id}`}>
+                Read more <span aria-hidden="true">↗</span>
+              </a>
+            </div>
+          </article>
+        ))}
       </section>
-
-      <div className="ticks"></div>
-
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
-        </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
-
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
+    </main>
   )
 }
 
