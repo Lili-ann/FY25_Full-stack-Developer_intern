@@ -233,12 +233,28 @@ function App() {
   const [commentBusy, setCommentBusy] = useState(false)
   const [editingCommentId, setEditingCommentId] = useState(null)
   const [editingCommentText, setEditingCommentText] = useState('')
+  const [postSearch, setPostSearch] = useState('')
   const postId = new URLSearchParams(window.location.search).get('post')
   const initialAuthMode =
     new URLSearchParams(window.location.search).get('auth') === 'register'
       ? 'register'
       : 'login'
   const selectedPost = blogPosts.find((post) => post.id === postId)
+  const normalizedPostSearch = postSearch.trim().toLocaleLowerCase()
+  const filteredPosts = normalizedPostSearch
+    ? blogPosts.filter((post) =>
+        [
+          post.title,
+          post.description,
+          post.author_name,
+          post.subtitle,
+          ...post.content,
+        ]
+          .join(' ')
+          .toLocaleLowerCase()
+          .includes(normalizedPostSearch),
+      )
+    : blogPosts
 
   useEffect(() => {
     let active = true
@@ -785,6 +801,39 @@ function App() {
       </header>
 
       <div className="create-post-actions">
+        <form
+          className="post-search"
+          role="search"
+          onSubmit={(event) => event.preventDefault()}
+        >
+          <label className="visually-hidden" htmlFor="post-search-input">
+            Search blog posts
+          </label>
+          <span className="post-search-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" focusable="false">
+              <circle cx="10.8" cy="10.8" r="6.8" />
+              <path d="m16 16 4.2 4.2" />
+            </svg>
+          </span>
+          <input
+            id="post-search-input"
+            type="search"
+            value={postSearch}
+            onChange={(event) => setPostSearch(event.target.value)}
+            placeholder="Search posts..."
+            autoComplete="off"
+          />
+          {postSearch && (
+            <button
+              className="post-search-clear"
+              type="button"
+              aria-label="Clear search"
+              onClick={() => setPostSearch('')}
+            >
+              ×
+            </button>
+          )}
+        </form>
         <button
           className="action-button"
           type="button"
@@ -872,7 +921,11 @@ function App() {
           <p role="status">Loading posts…</p>
         ) : blogPosts.length === 0 ? (
           <p>No posts yet. Create the first blog post.</p>
-        ) : blogPosts.map((post) => (
+        ) : filteredPosts.length === 0 ? (
+          <p className="post-search-empty" role="status">
+            No posts found for “{postSearch.trim()}”.
+          </p>
+        ) : filteredPosts.map((post) => (
           <article className="post" id={post.id} key={post.id}>
             <div className="post-content">
               <h2>{post.title}</h2>
