@@ -30,8 +30,37 @@ function App() {
   const [blogPosts, setBlogPosts] = useState(posts)
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(null)
+  const [creating, setCreating] = useState(false)
+  const [newPost, setNewPost] = useState(null)
   const postId = new URLSearchParams(window.location.search).get('post')
   const selectedPost = blogPosts.find((post) => post.id === postId)
+
+  function startCreating() {
+    setNewPost({
+      title: '',
+      subtitle: new Date().toISOString().slice(0, 10),
+      description: '',
+      content: [],
+    })
+    setCreating(true)
+  }
+
+  function createPost(event) {
+    event.preventDefault()
+    const slug =
+      newPost.title
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-|-$/g, '') || 'new-post'
+
+    setBlogPosts((currentPosts) => [
+      ...currentPosts,
+      { ...newPost, id: `${slug}-${Date.now()}` },
+    ])
+    setCreating(false)
+    setNewPost(null)
+  }
 
   function startEditing() {
     setDraft({ ...selectedPost, content: [...selectedPost.content] })
@@ -174,6 +203,84 @@ function App() {
       <header className="page-header">
         <h1>blog</h1>
       </header>
+
+      <div className="create-post-actions">
+        <button
+          className="action-button"
+          type="button"
+          onClick={startCreating}
+          disabled={creating}
+        >
+          Create new blog
+        </button>
+      </div>
+
+      {creating && (
+        <form className="post-editor create-post-editor" onSubmit={createPost}>
+          <label>
+            Title
+            <input
+              required
+              value={newPost.title}
+              onChange={(event) =>
+                setNewPost({ ...newPost, title: event.target.value })
+              }
+            />
+          </label>
+          <label>
+            Date
+            <input
+              type="date"
+              value={newPost.subtitle}
+              onChange={(event) =>
+                setNewPost({ ...newPost, subtitle: event.target.value })
+              }
+            />
+          </label>
+          <label>
+            Description
+            <textarea
+              required
+              rows="3"
+              value={newPost.description}
+              onChange={(event) =>
+                setNewPost({ ...newPost, description: event.target.value })
+              }
+            />
+          </label>
+          <label>
+            Blog content
+            <textarea
+              required
+              rows="10"
+              value={newPost.content.join('\n\n')}
+              onChange={(event) =>
+                setNewPost({
+                  ...newPost,
+                  content: event.target.value
+                    .split(/\n\s*\n/)
+                    .filter((paragraph) => paragraph.trim()),
+                })
+              }
+            />
+          </label>
+          <div className="editor-actions">
+            <button className="action-button" type="submit">
+              Create post
+            </button>
+            <button
+              className="action-button secondary"
+              type="button"
+              onClick={() => {
+                setCreating(false)
+                setNewPost(null)
+              }}
+            >
+              Cancel
+            </button>
+          </div>
+        </form>
+      )}
 
       <section className="post-list" aria-label="Latest blog posts">
         {blogPosts.map((post, index) => (

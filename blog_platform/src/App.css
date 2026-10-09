@@ -23,6 +23,18 @@
   display: grid;
 }
 
+.create-post-actions {
+  display: flex;
+  justify-content: flex-end;
+  padding: 24px 0 4px;
+}
+
+.create-post-editor {
+  margin: 24px 0;
+  padding: 24px;
+  border: 1px solid #dedbd5;
+}
+
 .post {
   display: grid;
   grid-template-columns: 64px 1fr;
