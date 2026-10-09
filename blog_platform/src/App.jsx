@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import './App.css'
 
 const posts = [
@@ -26,8 +27,38 @@ const posts = [
 ]
 
 function App() {
+  const [blogPosts, setBlogPosts] = useState(posts)
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState(null)
   const postId = new URLSearchParams(window.location.search).get('post')
-  const selectedPost = posts.find((post) => post.id === postId)
+  const selectedPost = blogPosts.find((post) => post.id === postId)
+
+  function startEditing() {
+    setDraft({ ...selectedPost, content: [...selectedPost.content] })
+    setEditing(true)
+  }
+
+  function savePost(event) {
+    event.preventDefault()
+    setBlogPosts((currentPosts) =>
+      currentPosts.map((post) => (post.id === postId ? draft : post)),
+    )
+    setEditing(false)
+    setDraft(null)
+  }
+
+  function deletePost() {
+    if (!window.confirm(`Delete "${selectedPost.title}"? This cannot be undone.`)) {
+      return
+    }
+
+    setBlogPosts((currentPosts) =>
+      currentPosts.filter((post) => post.id !== postId),
+    )
+    const url = new URL(window.location.href)
+    url.searchParams.delete('post')
+    window.history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`)
+  }
 
   if (postId) {
     return (
@@ -36,20 +67,103 @@ function App() {
           ← All posts
         </a>
         {selectedPost ? (
-          <article>
-            <header className="detail-header">
-              <p className="post-subtitle">{selectedPost.subtitle}</p>
-              <h1>{selectedPost.title}</h1>
-              <p className="detail-description">{selectedPost.description}</p>
-            </header>
-            <div className="article-body">
-              {selectedPost.content.map((paragraph) => (
-                <p key={paragraph}>{paragraph}</p>
-              ))}
-            </div>
-          </article>
-        ) : (
-          <h1 className="not-found">Post not found</h1>
+            editing ? (
+              <form className="post-editor" onSubmit={savePost}>
+                <label>
+                  Title
+                  <input
+                    required
+                    value={draft.title}
+                    onChange={(event) =>
+                      setDraft({ ...draft, title: event.target.value })
+                    }
+                  />
+                </label>
+                <label>
+                  Date
+                  <input
+                    type="date"
+                    value={draft.subtitle}
+                    onChange={(event) =>
+                      setDraft({ ...draft, subtitle: event.target.value })
+                    }
+                  />
+                </label>
+                <label>
+                  Description
+                  <textarea
+                    required
+                    rows="3"
+                    value={draft.description}
+                    onChange={(event) =>
+                      setDraft({ ...draft, description: event.target.value })
+                    }
+                  />
+                </label>
+                <label>
+                  Blog content
+                  <textarea
+                    required
+                    rows="10"
+                    value={draft.content.join('\n\n')}
+                    onChange={(event) =>
+                      setDraft({
+                        ...draft,
+                        content: event.target.value
+                          .split(/\n\s*\n/)
+                          .filter((paragraph) => paragraph.trim()),
+                      })
+                    }
+                  />
+                </label>
+                <div className="editor-actions">
+                  <button className="action-button" type="submit">
+                    Save
+                  </button>
+                  <button
+                    className="action-button secondary"
+                    type="button"
+                    onClick={() => {
+                      setEditing(false)
+                      setDraft(null)
+                    }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </form>
+            ) : (
+              <article>
+                <div className="article-actions">
+                  <button
+                    className="action-button"
+                    type="button"
+                    onClick={startEditing}
+                  >
+                    Edit
+                  </button>
+                  <button
+                    className="action-button danger"
+                    type="button"
+                    onClick={deletePost}
+                  >
+                    Delete
+                  </button>
+                </div>
+                <header className="detail-header">
+                  <p className="post-subtitle">{selectedPost.subtitle}</p>
+                  <h1>{selectedPost.title}</h1>
+                  <p className="detail-description">{selectedPost.description}</p>
+                </header>
+                <div className="article-body">
+                  {selectedPost.content.map((paragraph, index) => (
+                    <p key={`${selectedPost.id}-${index}`}>{paragraph}</p>
+                  ))}
+                </div>
+              </article>
+            )
+          ) : (
+            <h1 className="not-found">Post not found</h1>
         )}
       </main>
     )
@@ -62,17 +176,20 @@ function App() {
       </header>
 
       <section className="post-list" aria-label="Latest blog posts">
-        {posts.map((post, index) => (
+        {blogPosts.map((post, index) => (
           <article className="post" id={post.id} key={post.id}>
             <span className="post-number" aria-hidden="true">
               0{index + 1}
             </span>
             <div className="post-content">
+
               <h2>{post.title}</h2>
-              <p className="post-subtitle">{post.subtitle}</p>
+
+              <p className="post-subtitle" style={{ fontStyle: 'italic'}} >{post.subtitle}</p>
               <p>{post.description}</p>
-              <a className="read-more" href={`/?post=${post.id}`}>
-                Read more <span aria-hidden="true">↗</span>
+
+              <a className="read-more"style={{ textDecoration: 'underline', color:'blue'}} href={`/?post=${post.id}`}>
+                Read more <span aria-hidden="true"></span>
               </a>
             </div>
           </article>
