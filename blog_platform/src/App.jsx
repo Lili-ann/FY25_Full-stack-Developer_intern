@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import './App.css'
 
 const posts = [
@@ -26,16 +26,71 @@ const posts = [
   },
 ]
 
-function AuthPage() {
-  const [mode, setMode] = useState('login')
+async function requestApi(url, options = {}) {
+  const token = sessionStorage.getItem('blog.jwt')
+  const response = await fetch(url, {
+    ...options,
+    headers: {
+      ...(options.body ? { 'Content-Type': 'application/json' } : {}),
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...options.headers,
+    },
+  })
+
+  if (response.status === 204) return null
+
+  let result
+  try {
+    result = await response.json()
+  } catch {
+    throw new Error('The server returned an invalid response.')
+  }
+
+  if (!response.ok) {
+    const error = new Error(result.error || 'The request could not be completed.')
+    error.status = response.status
+    throw error
+  }
+  return result
+}
+
+function AuthPage({ onAuthenticated, initialMode }) {
+  const [mode, setMode] = useState(initialMode)
+  const [name, setName] = useState('')
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [error, setError] = useState('')
+  const [submitting, setSubmitting] = useState(false)
   const isRegistering = mode === 'register'
+
+  async function submitAuth(event) {
+    event.preventDefault()
+    setError('')
+    setSubmitting(true)
+
+    try {
+      const { user, token } = await requestApi(
+        `/api/auth/${isRegistering ? 'register' : 'login'}`,
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            ...(isRegistering ? { name } : {}),
+            email,
+            password,
+          }),
+        },
+      )
+      onAuthenticated(user, token)
+    } catch (requestError) {
+      setError(requestError.message)
+    } finally {
+      setSubmitting(false)
+    }
+  }
 
   return (
     <main className="auth-page">
       <section className="auth-card" aria-labelledby="auth-title">
-        <a className="auth-home-link" href="/">
-          ← Back to blog
-        </a>
         <p className="auth-eyebrow">A place for thoughtful stories</p>
         <h1 id="auth-title">{isRegistering ? 'Create your account' : 'Welcome back'}</h1>
         <p className="auth-intro">
@@ -52,7 +107,10 @@ function AuthPage() {
             role="tab"
             aria-selected={!isRegistering}
             aria-controls="auth-form"
-            onClick={() => setMode('login')}
+            onClick={() => {
+              setMode('login')
+              setError('')
+            }}
           >
             Log in
           </button>
@@ -63,7 +121,10 @@ function AuthPage() {
             role="tab"
             aria-selected={isRegistering}
             aria-controls="auth-form"
-            onClick={() => setMode('register')}
+            onClick={() => {
+              setMode('register')
+              setError('')
+            }}
           >
             Register
           </button>
@@ -74,7 +135,7 @@ function AuthPage() {
           className="auth-form"
           role="tabpanel"
           aria-labelledby={isRegistering ? 'register-tab' : 'login-tab'}
-          onSubmit={(event) => event.preventDefault()}
+          onSubmit={submitAuth}
         >
           {isRegistering && (
             <label>
@@ -83,6 +144,9 @@ function AuthPage() {
                 autoComplete="name"
                 name="name"
                 placeholder="Your name"
+                value={name}
+                onChange={(event) => setName(event.target.value)}
+                maxLength={80}
                 required
                 type="text"
               />
@@ -94,6 +158,9 @@ function AuthPage() {
               autoComplete="email"
               name="email"
               placeholder="you@example.com"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              maxLength={254}
               required
               type="email"
             />
@@ -104,22 +171,53 @@ function AuthPage() {
               autoComplete={isRegistering ? 'new-password' : 'current-password'}
               name="password"
               placeholder="Enter your password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              minLength={8}
+              maxLength={72}
               required
               type="password"
             />
           </label>
-          <button className="auth-submit" type="button">
-            {isRegistering ? 'Create account' : 'Log in'}
+          {error && (
+            <p className="auth-error" role="alert">
+              {error}
+            </p>
+          )}
+          <button className="auth-submit" type="submit" disabled={submitting}>
+            {submitting
+              ? 'Please wait…'
+              : isRegistering
+                ? 'Create account'
+                : 'Log in'}
           </button>
         </form>
 
-        <p className="auth-note">Demo screen only — account access is not enabled.</p>
+        <p className="auth-note">
+          Create an account or sign in to access the blog.
+        </p>
       </section>
     </main>
   )
 }
 
+function AccountControls({ user, onLogout }) {
+  return (
+    <div className="account-controls">
+      <span className="account-name">{user.name}</span>
+      <button className="action-button secondary" type="button" onClick={onLogout}>
+        Log out
+      </button>
+    </div>
+  )
+}
+
 function App() {
+  const [authStatus, setAuthStatus] = useState(() =>
+    sessionStorage.getItem('blog.jwt') ? 'loading' : 'unauthenticated',
+  )
+  const [authUser, setAuthUser] = useState(null)
+  const [authError, setAuthError] = useState('')
   const [blogPosts, setBlogPosts] = useState(posts)
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(null)
@@ -128,8 +226,53 @@ function App() {
   const [commentText, setCommentText] = useState('')
   const [comments, setComments] = useState([])
   const postId = new URLSearchParams(window.location.search).get('post')
-  const authMode = new URLSearchParams(window.location.search).get('auth')
+  const initialAuthMode =
+    new URLSearchParams(window.location.search).get('auth') === 'register'
+      ? 'register'
+      : 'login'
   const selectedPost = blogPosts.find((post) => post.id === postId)
+
+  useEffect(() => {
+    let active = true
+    if (!sessionStorage.getItem('blog.jwt')) return undefined
+
+    requestApi('/api/auth/me')
+      .then(({ user }) => {
+        if (!active) return
+        setAuthUser(user)
+        setAuthStatus('authenticated')
+      })
+      .catch((error) => {
+        if (!active) return
+        if (error.status === 401) {
+          sessionStorage.removeItem('blog.jwt')
+          setAuthStatus('unauthenticated')
+        } else {
+          setAuthError(error.message)
+          setAuthStatus('error')
+        }
+      })
+
+    return () => {
+      active = false
+    }
+  }, [])
+
+  function handleAuthenticated(user, token) {
+    sessionStorage.setItem('blog.jwt', token)
+    setAuthUser(user)
+    setAuthStatus('authenticated')
+    const url = new URL(window.location.href)
+    url.searchParams.delete('auth')
+    window.history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`)
+  }
+
+  function logout() {
+    sessionStorage.removeItem('blog.jwt')
+    setAuthUser(null)
+    setAuthStatus('unauthenticated')
+    setEditing(false)
+  }
 
   function startCreating() {
     setNewPost({
@@ -197,8 +340,32 @@ function App() {
     setCommentText('')
   }
 
-  if (authMode) {
-    return <AuthPage />
+  if (authStatus === 'loading') {
+    return <main className="auth-page"><p>Checking your account…</p></main>
+  }
+
+  if (authStatus === 'error') {
+    return (
+      <main className="auth-page">
+        <section className="auth-card">
+          <h1>Cannot connect</h1>
+          <p className="auth-error" role="alert">{authError}</p>
+          <p className="auth-note">Start the backend server, then reload this page.</p>
+          <button className="auth-submit" type="button" onClick={() => window.location.reload()}>
+            Retry
+          </button>
+        </section>
+      </main>
+    )
+  }
+
+  if (authStatus === 'unauthenticated') {
+    return (
+      <AuthPage
+        initialMode={initialAuthMode}
+        onAuthenticated={handleAuthenticated}
+      />
+    )
   }
 
   if (postId) {
@@ -207,6 +374,8 @@ function App() {
         <a className="back-link" href="/">
           ← All posts
         </a>
+        <AccountControls user={authUser} onLogout={logout} />
+        {authError && <p className="auth-error" role="alert">{authError}</p>}
         {selectedPost ? (
             editing ? (
               <form className="post-editor" onSubmit={savePost}>
@@ -347,13 +516,11 @@ function App() {
   return (
     <main className="blog-home">
       <header className="page-header">
-        <h1>blog</h1>
+        <h1>Your Blog Cloud</h1>
       </header>
 
       <div className="create-post-actions">
-        <a className="account-link" href="/?auth=login">
-          Log in / Register
-        </a>
+        <AccountControls user={authUser} onLogout={logout} />
         <button
           className="action-button"
           type="button"
