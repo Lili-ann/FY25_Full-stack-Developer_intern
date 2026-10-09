@@ -287,7 +287,65 @@
   background: #fffefa;
   color: #393831;
   line-height: 1.65;
+}
+
+.comment-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+  color: #68665f;
+  font-size: 0.8rem;
+}
+
+.comment-meta strong {
+  color: #393831;
+}
+
+.comment-meta time {
+  color: #88847b;
+}
+
+.comment-content {
+  margin: 10px 0 0;
+  color: #393831;
+  line-height: 1.65;
   white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.comment-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.comment-action {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #393831;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.82rem;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.comment-action:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+
+.comment-action.danger-text {
+  color: #9d352f;
+}
+
+.comment-edit {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
 }
 
 .comment-form textarea {
@@ -304,11 +362,26 @@
   line-height: 1.6;
 }
 
+.comment-edit textarea {
+  width: 100%;
+  padding: 12px;
+  border: 1px solid #d5d2ca;
+  border-radius: 4px;
+  background: #fffefa;
+  color: #25241f;
+  font: inherit;
+  font-size: 0.95rem;
+  resize: vertical;
+  line-height: 1.6;
+}
+
 .comment-form textarea::placeholder {
   color: #aaa69d;
 }
 
-.comment-form textarea:focus-visible {
+.comment-form textarea:focus-visible,
+.comment-edit textarea:focus-visible,
+.comment-action:focus-visible {
   outline: 2px solid #68665f;
   outline-offset: 3px;
 }

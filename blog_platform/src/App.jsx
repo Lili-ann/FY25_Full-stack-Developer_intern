@@ -203,6 +203,11 @@ function App() {
   const [newPost, setNewPost] = useState(null)
   const [commentText, setCommentText] = useState('')
   const [comments, setComments] = useState([])
+  const [commentsLoading, setCommentsLoading] = useState(false)
+  const [commentsError, setCommentsError] = useState('')
+  const [commentBusy, setCommentBusy] = useState(false)
+  const [editingCommentId, setEditingCommentId] = useState(null)
+  const [editingCommentText, setEditingCommentText] = useState('')
   const postId = new URLSearchParams(window.location.search).get('post')
   const initialAuthMode =
     new URLSearchParams(window.location.search).get('auth') === 'register'
@@ -266,6 +271,38 @@ function App() {
     }
   }, [authStatus])
 
+  useEffect(() => {
+    if (authStatus !== 'authenticated' || !postId || postsLoading) {
+      return undefined
+    }
+    if (!selectedPost) return undefined
+
+    let active = true
+    requestApi(`/api/posts/${postId}/comments`)
+      .then(({ comments: fetchedComments }) => {
+        if (active) {
+          setComments(fetchedComments)
+          setCommentsError('')
+        }
+      })
+      .catch((error) => {
+        if (!active) return
+        setCommentsError(error.message)
+        if (error.status === 401) {
+          sessionStorage.removeItem('blog.jwt')
+          setAuthUser(null)
+          setAuthStatus('unauthenticated')
+        }
+      })
+      .finally(() => {
+        if (active) setCommentsLoading(false)
+      })
+
+    return () => {
+      active = false
+    }
+  }, [authStatus, postId, postsLoading, selectedPost])
+
   function handleAuthenticated(user, token) {
     sessionStorage.setItem('blog.jwt', token)
     setAuthUser(user)
@@ -285,6 +322,15 @@ function App() {
 
   function handlePostError(error) {
     setPostsError(error.message)
+    if (error.status === 401) {
+      sessionStorage.removeItem('blog.jwt')
+      setAuthUser(null)
+      setAuthStatus('unauthenticated')
+    }
+  }
+
+  function handleCommentError(error) {
+    setCommentsError(error.message)
     if (error.status === 401) {
       sessionStorage.removeItem('blog.jwt')
       setAuthUser(null)
@@ -371,16 +417,70 @@ function App() {
     }
   }
 
-  function submitComment(event) {
+  async function submitComment(event) {
     event.preventDefault()
     const content = commentText.trim()
     if (!content) return
 
-    setComments((currentComments) => [
-      ...currentComments,
-      { id: `${Date.now()}-${currentComments.length}`, content },
-    ])
-    setCommentText('')
+    setCommentBusy(true)
+    setCommentsError('')
+    try {
+      const { comment } = await requestApi(`/api/posts/${postId}/comments`, {
+        method: 'POST',
+        body: JSON.stringify({ content }),
+      })
+      setComments((currentComments) => [...currentComments, comment])
+      setCommentText('')
+    } catch (error) {
+      handleCommentError(error)
+    } finally {
+      setCommentBusy(false)
+    }
+  }
+
+  async function saveComment(commentId) {
+    const content = editingCommentText.trim()
+    if (!content) return
+
+    setCommentBusy(true)
+    setCommentsError('')
+    try {
+      const { comment } = await requestApi(
+        `/api/posts/${postId}/comments/${commentId}`,
+        {
+          method: 'PUT',
+          body: JSON.stringify({ content }),
+        },
+      )
+      setComments((currentComments) =>
+        currentComments.map((item) => (item.id === comment.id ? comment : item)),
+      )
+      setEditingCommentId(null)
+      setEditingCommentText('')
+    } catch (error) {
+      handleCommentError(error)
+    } finally {
+      setCommentBusy(false)
+    }
+  }
+
+  async function deleteComment(commentId) {
+    if (!window.confirm('Delete this comment?')) return
+
+    setCommentBusy(true)
+    setCommentsError('')
+    try {
+      await requestApi(`/api/posts/${postId}/comments/${commentId}`, {
+        method: 'DELETE',
+      })
+      setComments((currentComments) =>
+        currentComments.filter((comment) => comment.id !== commentId),
+      )
+    } catch (error) {
+      handleCommentError(error)
+    } finally {
+      setCommentBusy(false)
+    }
   }
 
   if (authStatus === 'loading') {
@@ -521,7 +621,14 @@ function App() {
 
                 <section className="comments-section">
                   <h2>Comments</h2>
-                  {comments.length === 0 ? (
+                  {commentsError && (
+                    <p className="auth-error" role="alert">
+                      {commentsError}
+                    </p>
+                  )}
+                  {commentsLoading ? (
+                    <p role="status">Loading comments…</p>
+                  ) : comments.length === 0 ? (
                     <p className="no-comments">
                       No comments yet. Be the first to share your thoughts!
                     </p>
@@ -529,7 +636,79 @@ function App() {
                     <ul className="comment-list">
                       {comments.map((comment) => (
                         <li className="comment-item" key={comment.id}>
-                          {comment.content}
+                          <div className="comment-meta">
+                            <strong>{comment.author_name}</strong>
+                            <time dateTime={`${comment.created_at.replace(' ', 'T')}Z`}>
+                              {new Date(`${comment.created_at.replace(' ', 'T')}Z`).toLocaleString()}
+                            </time>
+                          </div>
+                          {editingCommentId === comment.id ? (
+                            <div className="comment-edit">
+                              <label
+                                className="visually-hidden"
+                                htmlFor={`edit-comment-${comment.id}`}
+                              >
+                                Edit comment
+                              </label>
+                              <textarea
+                                id={`edit-comment-${comment.id}`}
+                                maxLength={5000}
+                                rows="4"
+                                value={editingCommentText}
+                                onChange={(event) =>
+                                  setEditingCommentText(event.target.value)
+                                }
+                              />
+                              <div className="comment-actions">
+                                <button
+                                  className="action-button"
+                                  type="button"
+                                  disabled={commentBusy}
+                                  onClick={() => saveComment(comment.id)}
+                                >
+                                  {commentBusy ? 'Saving…' : 'Save'}
+                                </button>
+                                <button
+                                  className="action-button secondary"
+                                  type="button"
+                                  disabled={commentBusy}
+                                  onClick={() => {
+                                    setEditingCommentId(null)
+                                    setEditingCommentText('')
+                                  }}
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <>
+                              <p className="comment-content">{comment.content}</p>
+                              {comment.user_id === authUser.id && (
+                                <div className="comment-actions">
+                                  <button
+                                    className="comment-action"
+                                    type="button"
+                                    disabled={commentBusy}
+                                    onClick={() => {
+                                      setEditingCommentId(comment.id)
+                                      setEditingCommentText(comment.content)
+                                    }}
+                                  >
+                                    Edit
+                                  </button>
+                                  <button
+                                    className="comment-action danger-text"
+                                    type="button"
+                                    disabled={commentBusy}
+                                    onClick={() => deleteComment(comment.id)}
+                                  >
+                                    Delete
+                                  </button>
+                                </div>
+                              )}
+                            </>
+                          )}
                         </li>
                       ))}
                     </ul>
@@ -542,13 +721,18 @@ function App() {
                     <textarea
                       id="comment-content"
                       required
+                      maxLength={5000}
                       rows="4"
                       value={commentText}
                       onChange={(event) => setCommentText(event.target.value)}
                       placeholder="Write a comment..."
                     />
-                    <button className="action-button" type="submit">
-                      Post comment
+                    <button
+                      className="action-button"
+                      type="submit"
+                      disabled={commentBusy || commentsLoading}
+                    >
+                      {commentBusy ? 'Posting…' : 'Post comment'}
                     </button>
                   </form>
                 </section>

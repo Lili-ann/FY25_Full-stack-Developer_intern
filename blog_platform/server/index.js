@@ -271,6 +271,124 @@ app.delete('/api/posts/:postId', requireAuth, (request, response) => {
   return response.status(204).end()
 })
 
+function serializeComment(comment) {
+  return {
+    ...comment,
+    id: String(comment.id),
+    post_id: String(comment.post_id),
+    user_id: Number(comment.user_id),
+  }
+}
+
+function validateComment(body) {
+  const content = typeof body?.content === 'string' ? body.content.trim() : ''
+  if (!content || content.length > 5000) {
+    return { error: 'Comment is required and must be 5,000 characters or fewer.' }
+  }
+  return { content }
+}
+
+const selectCommentsByPost = db.prepare(`
+  SELECT comments.id, comments.post_id, comments.user_id, comments.content,
+         comments.created_at, users.name AS author_name
+  FROM comments
+  JOIN users ON users.id = comments.user_id
+  WHERE comments.post_id = ?
+  ORDER BY comments.created_at, comments.id
+`)
+
+app.get('/api/posts/:postId/comments', requireAuth, (request, response) => {
+  const postId = parsePostId(request.params.postId)
+  if (!postId) return response.status(400).json({ error: 'Post ID is invalid.' })
+  if (!selectPostById.get(postId)) {
+    return response.status(404).json({ error: 'Post not found.' })
+  }
+
+  const comments = selectCommentsByPost.all(postId).map(serializeComment)
+  return response.json({ comments })
+})
+
+app.post('/api/posts/:postId/comments', requireAuth, (request, response) => {
+  const postId = parsePostId(request.params.postId)
+  if (!postId) return response.status(400).json({ error: 'Post ID is invalid.' })
+  if (!selectPostById.get(postId)) {
+    return response.status(404).json({ error: 'Post not found.' })
+  }
+
+  const result = validateComment(request.body)
+  if (result.error) return response.status(400).json({ error: result.error })
+
+  const created = db
+    .prepare('INSERT INTO comments (post_id, user_id, content) VALUES (?, ?, ?)')
+    .run(postId, request.authUser.id, result.content)
+  const comment = db
+    .prepare(`
+      SELECT comments.id, comments.post_id, comments.user_id, comments.content,
+             comments.created_at, users.name AS author_name
+      FROM comments
+      JOIN users ON users.id = comments.user_id
+      WHERE comments.id = ?
+    `)
+    .get(created.lastInsertRowid)
+  return response.status(201).json({ comment: serializeComment(comment) })
+})
+
+app.put('/api/posts/:postId/comments/:commentId', requireAuth, (request, response) => {
+  const postId = parsePostId(request.params.postId)
+  const commentId = parsePostId(request.params.commentId)
+  if (!postId || !commentId) {
+    return response.status(400).json({ error: 'Post or comment ID is invalid.' })
+  }
+
+  const result = validateComment(request.body)
+  if (result.error) return response.status(400).json({ error: result.error })
+
+  const updated = db.prepare(`
+    UPDATE comments
+    SET content = ?
+    WHERE id = ? AND post_id = ? AND user_id = ?
+  `).run(result.content, commentId, postId, request.authUser.id)
+  if (updated.changes === 0) {
+    const exists = db
+      .prepare('SELECT user_id FROM comments WHERE id = ? AND post_id = ?')
+      .get(commentId, postId)
+    if (!exists) return response.status(404).json({ error: 'Comment not found.' })
+    return response.status(403).json({ error: 'You can only edit your own comments.' })
+  }
+
+  const comment = db
+    .prepare(`
+      SELECT comments.id, comments.post_id, comments.user_id, comments.content,
+             comments.created_at, users.name AS author_name
+      FROM comments
+      JOIN users ON users.id = comments.user_id
+      WHERE comments.id = ?
+    `)
+    .get(commentId)
+  return response.json({ comment: serializeComment(comment) })
+})
+
+app.delete('/api/posts/:postId/comments/:commentId', requireAuth, (request, response) => {
+  const postId = parsePostId(request.params.postId)
+  const commentId = parsePostId(request.params.commentId)
+  if (!postId || !commentId) {
+    return response.status(400).json({ error: 'Post or comment ID is invalid.' })
+  }
+
+  const deleted = db.prepare(`
+    DELETE FROM comments
+    WHERE id = ? AND post_id = ? AND user_id = ?
+  `).run(commentId, postId, request.authUser.id)
+  if (deleted.changes === 0) {
+    const exists = db
+      .prepare('SELECT id FROM comments WHERE id = ? AND post_id = ?')
+      .get(commentId, postId)
+    if (!exists) return response.status(404).json({ error: 'Comment not found.' })
+    return response.status(403).json({ error: 'You can only delete your own comments.' })
+  }
+  return response.status(204).end()
+})
+
 app.use((error, request, response, next) => {
   console.error(error)
   if (response.headersSent) return next(error)
