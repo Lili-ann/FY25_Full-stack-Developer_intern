@@ -125,6 +125,8 @@ function App() {
   const [draft, setDraft] = useState(null)
   const [creating, setCreating] = useState(false)
   const [newPost, setNewPost] = useState(null)
+  const [commentText, setCommentText] = useState('')
+  const [comments, setComments] = useState([])
   const postId = new URLSearchParams(window.location.search).get('post')
   const authMode = new URLSearchParams(window.location.search).get('auth')
   const selectedPost = blogPosts.find((post) => post.id === postId)
@@ -181,6 +183,18 @@ function App() {
     const url = new URL(window.location.href)
     url.searchParams.delete('post')
     window.history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`)
+  }
+
+  function submitComment(event) {
+    event.preventDefault()
+    const content = commentText.trim()
+    if (!content) return
+
+    setComments((currentComments) => [
+      ...currentComments,
+      { id: `${Date.now()}-${currentComments.length}`, content },
+    ])
+    setCommentText('')
   }
 
   if (authMode) {
@@ -287,6 +301,40 @@ function App() {
                     <p key={`${selectedPost.id}-${index}`}>{paragraph}</p>
                   ))}
                 </div>
+
+                <section className="comments-section">
+                  <h2>Comments</h2>
+                  {comments.length === 0 ? (
+                    <p className="no-comments">
+                      No comments yet. Be the first to share your thoughts!
+                    </p>
+                  ) : (
+                    <ul className="comment-list">
+                      {comments.map((comment) => (
+                        <li className="comment-item" key={comment.id}>
+                          {comment.content}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+
+                  <form className="comment-form" onSubmit={submitComment}>
+                    <label className="visually-hidden" htmlFor="comment-content">
+                      Comment
+                    </label>
+                    <textarea
+                      id="comment-content"
+                      required
+                      rows="4"
+                      value={commentText}
+                      onChange={(event) => setCommentText(event.target.value)}
+                      placeholder="Write a comment..."
+                    />
+                    <button className="action-button" type="submit">
+                      Post comment
+                    </button>
+                  </form>
+                </section>
               </article>
             )
           ) : (
