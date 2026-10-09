@@ -11,6 +11,7 @@ db.exec(`
     subtitle TEXT NOT NULL,
     description TEXT NOT NULL,
     content TEXT NOT NULL,
+    comments TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   );
 
@@ -22,5 +23,10 @@ db.exec(`
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   )
 `)
+
+const postColumns = db.prepare('PRAGMA table_info(posts)').all()
+if (!postColumns.some((column) => column.name === 'comments')) {
+  db.exec("ALTER TABLE posts ADD COLUMN comments TEXT NOT NULL DEFAULT ''")
+}
 
 module.exports = db
