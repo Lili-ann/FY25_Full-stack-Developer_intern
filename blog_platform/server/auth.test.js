@@ -78,11 +78,27 @@ test('registers and logs in accounts with JWT-protected identity endpoint', asyn
 
   const initialPosts = await request('/api/posts', {}, registration.body.token)
   assert.equal(initialPosts.response.status, 200)
-  assert.equal(initialPosts.body.posts.length, 2)
-  assert.deepEqual(initialPosts.body.posts[0].content, [
+  const postColumns = db.prepare('PRAGMA table_info(posts)').all()
+  assert.ok(postColumns.some((column) => column.name === 'user_id'))
+  assert.ok(postColumns.every((column) => column.name !== 'created_by'))
+  assert.equal(initialPosts.body.posts.length, 5)
+  assert.deepEqual(initialPosts.body.posts.find(
+    (post) => post.title === 'Finding Your Focus',
+  ).content, [
     'Focus can feel hard to find when every notification and new task asks for our attention. Instead of trying to do everything at once, choose one thing that matters and give it your full attention.',
     'A short pause, a clear workspace, and a small, realistic plan can make it easier to begin. Progress does not have to be dramatic; a little uninterrupted time can be enough to build momentum.',
   ])
+  assert.deepEqual(
+    initialPosts.body.posts
+      .filter((post) => post.title !== 'Finding Your Focus' &&
+        post.title !== 'The Beauty of Small Moments')
+      .map((post) => post.title),
+    [
+      'Build Motivation That Lasts',
+      'Turn Your Skills Into Extra Income',
+      'Make Success a System',
+    ],
+  )
 
   const postInput = {
     title: 'API Test Post',
@@ -98,7 +114,8 @@ test('registers and logs in accounts with JWT-protected identity endpoint', asyn
   assert.equal(createdPost.response.status, 201)
   assert.equal(createdPost.body.post.title, postInput.title)
   assert.deepEqual(createdPost.body.post.content, postInput.content)
-  assert.equal(createdPost.body.post.created_by, registration.body.user.id)
+  assert.equal(createdPost.body.post.user_id, registration.body.user.id)
+  assert.equal(createdPost.body.post.author_name, 'Test User')
 
   const createdPostId = createdPost.body.post.id
   const fetchedPost = await request(
@@ -157,35 +174,103 @@ test('registers and logs in accounts with JWT-protected identity endpoint', asyn
   })
   assert.equal(secondRegistration.response.status, 201)
 
-  const forbiddenUpdate = await request(
-    `/api/posts/${createdPostId}/comments/${createdComment.body.comment.id}`,
+  const nonOwnerPostUpdate = await request(
+    `/api/posts/${createdPostId}`,
     {
       method: 'PUT',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ content: 'Changed by another user.' }),
+      body: JSON.stringify({ ...postInput, title: 'Changed by another user.' }),
     },
     secondRegistration.body.token,
   )
-  assert.equal(forbiddenUpdate.response.status, 403)
+  assert.equal(nonOwnerPostUpdate.response.status, 403)
 
-  const updatedComment = await request(
-    `/api/posts/${createdPostId}/comments/${createdComment.body.comment.id}`,
-    {
-      method: 'PUT',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ content: 'Updated persisted comment.' }),
-    },
-    registration.body.token,
-  )
-  assert.equal(updatedComment.response.status, 200)
-  assert.equal(updatedComment.body.comment.content, 'Updated persisted comment.')
-
-  const forbiddenDelete = await request(
-    `/api/posts/${createdPostId}/comments/${createdComment.body.comment.id}`,
+  const nonOwnerPostDelete = await request(
+    `/api/posts/${createdPostId}`,
     { method: 'DELETE' },
     secondRegistration.body.token,
   )
+  assert.equal(nonOwnerPostDelete.response.status, 403)
+
+  const secondUserComment = await request(
+    `/api/posts/${createdPostId}/comments`,
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ content: 'Comment from the second user.' }),
+    },
+    secondRegistration.body.token,
+  )
+  assert.equal(secondUserComment.response.status, 201)
+  assert.equal(secondUserComment.body.comment.author_name, 'Another User')
+
+  const thirdRegistration = await request('/api/auth/register', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      name: 'Third User',
+      email: 'third@example.com',
+      password: 'third secure password',
+    }),
+  })
+  assert.equal(thirdRegistration.response.status, 201)
+
+  const secondCommentId = secondUserComment.body.comment.id
+  const forbiddenUpdate = await request(
+    `/api/posts/${createdPostId}/comments/${secondCommentId}`,
+    {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ content: 'Changed by an unrelated user.' }),
+    },
+    thirdRegistration.body.token,
+  )
+  assert.equal(forbiddenUpdate.response.status, 403)
+
+  const postOwnerUpdatedComment = await request(
+    `/api/posts/${createdPostId}/comments/${secondCommentId}`,
+    {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ content: 'Updated by the post creator.' }),
+    },
+    registration.body.token,
+  )
+  assert.equal(postOwnerUpdatedComment.response.status, 200)
+  assert.equal(postOwnerUpdatedComment.body.comment.content, 'Updated by the post creator.')
+
+  const forbiddenDelete = await request(
+    `/api/posts/${createdPostId}/comments/${secondCommentId}`,
+    { method: 'DELETE' },
+    thirdRegistration.body.token,
+  )
   assert.equal(forbiddenDelete.response.status, 403)
+
+  const commenterUpdatedComment = await request(
+    `/api/posts/${createdPostId}/comments/${secondCommentId}`,
+    {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ content: 'Updated by the commenter.' }),
+    },
+    secondRegistration.body.token,
+  )
+  assert.equal(commenterUpdatedComment.response.status, 200)
+  assert.equal(commenterUpdatedComment.body.comment.content, 'Updated by the commenter.')
+
+  const commenterForbiddenDelete = await request(
+    `/api/posts/${createdPostId}/comments/${secondCommentId}`,
+    { method: 'DELETE' },
+    secondRegistration.body.token,
+  )
+  assert.equal(commenterForbiddenDelete.response.status, 403)
+
+  const postOwnerDeletedComment = await request(
+    `/api/posts/${createdPostId}/comments/${secondCommentId}`,
+    { method: 'DELETE' },
+    registration.body.token,
+  )
+  assert.equal(postOwnerDeletedComment.response.status, 204)
 
   const deletedComment = await request(
     `/api/posts/${createdPostId}/comments/${createdComment.body.comment.id}`,

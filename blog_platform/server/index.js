@@ -97,9 +97,11 @@ function serializePost(post) {
 }
 
 const selectPostById = db.prepare(`
-  SELECT id, title, subtitle, description, content, created_by, created_at
+  SELECT posts.id, posts.title, posts.subtitle, posts.description, posts.content,
+         posts.user_id, posts.created_at, users.name AS author_name
   FROM posts
-  WHERE id = ?
+  LEFT JOIN users ON users.id = posts.user_id
+  WHERE posts.id = ?
 `)
 
 function parsePostId(value) {
@@ -212,7 +214,13 @@ app.get('/api/auth/me', requireAuth, (request, response) => {
 
 app.get('/api/posts', requireAuth, (_request, response) => {
   const posts = db
-    .prepare('SELECT id, title, subtitle, description, content, created_by, created_at FROM posts ORDER BY id')
+    .prepare(`
+      SELECT posts.id, posts.title, posts.subtitle, posts.description, posts.content,
+             posts.user_id, posts.created_at, users.name AS author_name
+      FROM posts
+      LEFT JOIN users ON users.id = posts.user_id
+      ORDER BY posts.id
+    `)
     .all()
     .map(serializePost)
   return response.json({ posts })
@@ -232,12 +240,12 @@ app.post('/api/posts', requireAuth, (request, response) => {
   if (result.error) return response.status(400).json({ error: result.error })
 
   const insert = db.prepare(`
-    INSERT INTO posts (title, subtitle, description, content, created_by)
-    VALUES (@title, @subtitle, @description, @content, @created_by)
+    INSERT INTO posts (title, subtitle, description, content, user_id)
+    VALUES (@title, @subtitle, @description, @content, @user_id)
   `)
   const created = insert.run({
     ...result.data,
-    created_by: request.authUser.id,
+    user_id: request.authUser.id,
   })
   const post = selectPostById.get(created.lastInsertRowid)
   return response.status(201).json({ post: serializePost(post) })
@@ -247,15 +255,21 @@ app.put('/api/posts/:postId', requireAuth, (request, response) => {
   const id = parsePostId(request.params.postId)
   if (!id) return response.status(400).json({ error: 'Post ID is invalid.' })
 
+  const existingPost = db.prepare('SELECT user_id FROM posts WHERE id = ?').get(id)
+  if (!existingPost) return response.status(404).json({ error: 'Post not found.' })
+  if (existingPost.user_id !== request.authUser.id) {
+    return response.status(403).json({ error: 'Only the post author can edit this post.' })
+  }
+
   const result = validatePost(request.body)
   if (result.error) return response.status(400).json({ error: result.error })
 
   const update = db.prepare(`
     UPDATE posts
     SET title = @title, subtitle = @subtitle, description = @description, content = @content
-    WHERE id = @id
+    WHERE id = @id AND user_id = @user_id
   `)
-  const updated = update.run({ ...result.data, id })
+  const updated = update.run({ ...result.data, id, user_id: request.authUser.id })
   if (updated.changes === 0) return response.status(404).json({ error: 'Post not found.' })
 
   const post = selectPostById.get(id)
@@ -266,7 +280,15 @@ app.delete('/api/posts/:postId', requireAuth, (request, response) => {
   const id = parsePostId(request.params.postId)
   if (!id) return response.status(400).json({ error: 'Post ID is invalid.' })
 
-  const deleted = db.prepare('DELETE FROM posts WHERE id = ?').run(id)
+  const post = db.prepare('SELECT user_id FROM posts WHERE id = ?').get(id)
+  if (!post) return response.status(404).json({ error: 'Post not found.' })
+  if (post.user_id !== request.authUser.id) {
+    return response.status(403).json({ error: 'Only the post author can delete this post.' })
+  }
+
+  const deleted = db
+    .prepare('DELETE FROM posts WHERE id = ? AND user_id = ?')
+    .run(id, request.authUser.id)
   if (deleted.changes === 0) return response.status(404).json({ error: 'Post not found.' })
   return response.status(204).end()
 })
@@ -296,6 +318,22 @@ const selectCommentsByPost = db.prepare(`
   WHERE comments.post_id = ?
   ORDER BY comments.created_at, comments.id
 `)
+
+function canManageComment(commentId, postId, userId) {
+  const comment = db.prepare(`
+    SELECT comments.user_id, posts.user_id AS post_user_id
+    FROM comments
+    JOIN posts ON posts.id = comments.post_id
+    WHERE comments.id = ? AND comments.post_id = ?
+  `).get(commentId, postId)
+
+  if (!comment) return { exists: false, allowed: false }
+  return {
+    exists: true,
+    canEdit: comment.user_id === userId || comment.post_user_id === userId,
+    canDelete: comment.post_user_id === userId,
+  }
+}
 
 app.get('/api/posts/:postId/comments', requireAuth, (request, response) => {
   const postId = parsePostId(request.params.postId)
@@ -346,14 +384,18 @@ app.put('/api/posts/:postId/comments/:commentId', requireAuth, (request, respons
   const updated = db.prepare(`
     UPDATE comments
     SET content = ?
-    WHERE id = ? AND post_id = ? AND user_id = ?
-  `).run(result.content, commentId, postId, request.authUser.id)
+    WHERE id = ? AND post_id = ?
+      AND (
+        user_id = ? OR EXISTS (
+          SELECT 1 FROM posts
+          WHERE posts.id = comments.post_id AND posts.user_id = ?
+        )
+      )
+  `).run(result.content, commentId, postId, request.authUser.id, request.authUser.id)
   if (updated.changes === 0) {
-    const exists = db
-      .prepare('SELECT user_id FROM comments WHERE id = ? AND post_id = ?')
-      .get(commentId, postId)
-    if (!exists) return response.status(404).json({ error: 'Comment not found.' })
-    return response.status(403).json({ error: 'You can only edit your own comments.' })
+    const permission = canManageComment(commentId, postId, request.authUser.id)
+    if (!permission.exists) return response.status(404).json({ error: 'Comment not found.' })
+    return response.status(403).json({ error: 'You can only edit your own comments or comments on your post.' })
   }
 
   const comment = db
@@ -377,14 +419,16 @@ app.delete('/api/posts/:postId/comments/:commentId', requireAuth, (request, resp
 
   const deleted = db.prepare(`
     DELETE FROM comments
-    WHERE id = ? AND post_id = ? AND user_id = ?
+    WHERE id = ? AND post_id = ?
+      AND EXISTS (
+        SELECT 1 FROM posts
+        WHERE posts.id = comments.post_id AND posts.user_id = ?
+      )
   `).run(commentId, postId, request.authUser.id)
   if (deleted.changes === 0) {
-    const exists = db
-      .prepare('SELECT id FROM comments WHERE id = ? AND post_id = ?')
-      .get(commentId, postId)
-    if (!exists) return response.status(404).json({ error: 'Comment not found.' })
-    return response.status(403).json({ error: 'You can only delete your own comments.' })
+    const permission = canManageComment(commentId, postId, request.authUser.id)
+    if (!permission.exists) return response.status(404).json({ error: 'Comment not found.' })
+    return response.status(403).json({ error: 'Only the post author can delete comments.' })
   }
   return response.status(204).end()
 })

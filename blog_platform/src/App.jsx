@@ -177,12 +177,37 @@ function AuthPage({ onAuthenticated, initialMode }) {
 }
 
 function AccountControls({ user, onLogout }) {
+  const initials = user.name
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part[0])
+    .join('')
+    .toUpperCase()
+
   return (
     <div className="account-controls">
-      <span className="account-name">{user.name}</span>
-      <button className="action-button secondary" type="button" onClick={onLogout}>
-        Log out
-      </button>
+      <div className="account-menu">
+        <button
+          className="account-profile"
+          type="button"
+          aria-label={`Account options for ${user.name}`}
+          aria-haspopup="true"
+        >
+          <span className="account-avatar" aria-hidden="true">{initials}</span>
+          <span className="account-name">{user.name}</span>
+        </button>
+        <div className="account-menu-options">
+          <span className="account-menu-item">View profile</span>
+          <button
+            className="account-menu-item account-logout"
+            type="button"
+            onClick={onLogout}
+          >
+            Log out
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
@@ -517,7 +542,6 @@ function App() {
         <a className="back-link" href="/">
           ← All posts
         </a>
-        <AccountControls user={authUser} onLogout={logout} />
         {authError && <p className="auth-error" role="alert">{authError}</p>}
         {postsError && <p className="auth-error" role="alert">{postsError}</p>}
         {postsLoading ? (
@@ -590,6 +614,7 @@ function App() {
               </form>
             ) : (
               <article>
+              {selectedPost.user_id === authUser.id && (
                 <div className="article-actions">
                   <button
                     className="action-button"
@@ -608,9 +633,13 @@ function App() {
                     Delete
                   </button>
                 </div>
+              )}
                 <header className="detail-header">
-                  <p className="post-subtitle">{selectedPost.subtitle}</p>
                   <h1>{selectedPost.title}</h1>
+                  <p className="post-author">
+                    Created by: {selectedPost.author_name || 'Unknown author'}
+                  </p>
+                  <p className="post-subtitle">{selectedPost.subtitle}</p>
                   <p className="detail-description">{selectedPost.description}</p>
                 </header>
                 <div className="article-body">
@@ -684,7 +713,8 @@ function App() {
                           ) : (
                             <>
                               <p className="comment-content">{comment.content}</p>
-                              {comment.user_id === authUser.id && (
+                              {(comment.user_id === authUser.id ||
+                                selectedPost.user_id === authUser.id) && (
                                 <div className="comment-actions">
                                   <button
                                     className="comment-action"
@@ -697,14 +727,16 @@ function App() {
                                   >
                                     Edit
                                   </button>
-                                  <button
-                                    className="comment-action danger-text"
-                                    type="button"
-                                    disabled={commentBusy}
-                                    onClick={() => deleteComment(comment.id)}
-                                  >
-                                    Delete
-                                  </button>
+                                  {selectedPost.user_id === authUser.id && (
+                                    <button
+                                      className="comment-action danger-text"
+                                      type="button"
+                                      disabled={commentBusy}
+                                      onClick={() => deleteComment(comment.id)}
+                                    >
+                                      Delete
+                                    </button>
+                                  )}
                                 </div>
                               )}
                             </>
@@ -749,24 +781,24 @@ function App() {
     <main className="blog-home">
       <header className="page-header">
         <h1>Your Blog Cloud</h1>
+        <AccountControls user={authUser} onLogout={logout} />
       </header>
 
       <div className="create-post-actions">
-        <AccountControls user={authUser} onLogout={logout} />
-        {postsError && (
-          <p className="auth-error" role="alert">
-            {postsError}
-          </p>
-        )}
         <button
           className="action-button"
           type="button"
           onClick={startCreating}
           disabled={creating}
         >
-          Create new blog
+          + Create new blog
         </button>
       </div>
+      {postsError && (
+        <p className="auth-error" role="alert">
+          {postsError}
+        </p>
+      )}
 
       {creating && (
         <form className="post-editor create-post-editor" onSubmit={createPost} aria-busy={postBusy}>
@@ -840,15 +872,13 @@ function App() {
           <p role="status">Loading posts…</p>
         ) : blogPosts.length === 0 ? (
           <p>No posts yet. Create the first blog post.</p>
-        ) : blogPosts.map((post, index) => (
+        ) : blogPosts.map((post) => (
           <article className="post" id={post.id} key={post.id}>
-            <span className="post-number" aria-hidden="true">
-              0{index + 1}
-            </span>
             <div className="post-content">
-
               <h2>{post.title}</h2>
-
+              <p className="post-author">
+                Created by: {post.author_name || 'Unknown author'}
+              </p>
               <p className="post-subtitle" style={{ fontStyle: 'italic'}} >{post.subtitle}</p>
               <p>{post.description}</p>
 

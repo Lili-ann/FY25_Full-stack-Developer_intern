@@ -5,6 +5,10 @@
 }
 
 .page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
   padding-bottom: 48px;
   border-bottom: 1px solid #dedbd5;
 }
@@ -13,8 +17,7 @@
   margin: 0;
   color: #25241f;
   font-family: Georgia, 'Times New Roman', serif;
-  font-size: clamp(4rem, 2vw, 8rem);
-  justify-self: center;
+  font-size: clamp(3rem, 2vw, 8rem);
   font-weight: 400;
   letter-spacing: -0.09em;
   line-height: 0.9;
@@ -28,7 +31,7 @@
   display: flex;
   align-items: center;
   gap: 16px;
-  justify-content: flex-end;
+  justify-content: right;
   padding: 24px 0 4px;
 }
 
@@ -38,39 +41,121 @@
   gap: 12px;
 }
 
+.account-menu {
+  position: relative;
+}
+
+.account-profile {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+}
+
+.account-profile:focus-visible {
+  border-radius: 4px;
+  outline: 2px solid #68665f;
+  outline-offset: 4px;
+}
+
+.account-avatar {
+  display: grid;
+  width: 60px;
+  height: 60px;
+  flex: 0 0 60px;
+  place-items: center;
+  border: 1px solid #dedbd5;
+  border-radius: 50%;
+  background: #f1efe9;
+  color: #393831;
+  font-size: 1.5rem;
+  font-weight: 600;
+}
+
+.account-menu-options {
+  position: absolute;
+  z-index: 2;
+  top: calc(100% + 8px);
+  right: 0;
+  display: grid;
+  min-width: 160px;
+  padding: 6px;
+  border: 1px solid #dedbd5;
+  border-radius: 4px;
+  background: #fffefa;
+  box-shadow: 0 8px 20px rgb(37 36 31 / 12%);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-4px);
+  transition:
+    opacity 140ms ease,
+    transform 140ms ease,
+    visibility 140ms ease;
+  visibility: hidden;
+}
+
+.account-menu:hover .account-menu-options,
+.account-menu:focus-within .account-menu-options {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+  visibility: visible;
+}
+
+.account-menu-item {
+  padding: 9px 10px;
+  color: #393831;
+  font: inherit;
+  font-size: 0.9rem;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.account-logout {
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.account-logout:hover,
+.account-logout:focus-visible {
+  border-radius: 3px;
+  background: #eeece6;
+}
+
+.account-logout:focus-visible {
+  outline: 2px solid #68665f;
+  outline-offset: -2px;
+}
+
 .account-name {
   color: #68665f;
-  font-size: 0.9rem;
+  font-size: 1rem;
 }
 
 .create-post-editor {
-  margin: 24px 0;
-  padding: 24px;
+  margin: 10px 0;
+  padding: 10px;
   border: 1px solid #dedbd5;
 }
 
 .post {
-  display: grid;
-  grid-template-columns: 64px 1fr;
-  gap: 18px;
-  padding: 38px 0 42px;
+  display: block;
+  padding: 20px 0 50px;
   border-bottom: 1px solid #dedbd5;
-}
-
-.post-number {
-  padding-top: 7px;
-  color: #88847b;
-  font-size: 0.8rem;
-  letter-spacing: 0.08em;
 }
 
 .post h2 {
   margin: 0 0 12px;
   color: #25241f;
   font-family: Georgia, 'Times New Roman', serif;
-  font-size: clamp(1.65rem, 4vw, 2.25rem);
+  font-size: clamp(1rem, 3vw, 2rem);
   font-weight: 400;
-  letter-spacing: -0.035em;
+  letter-spacing: -0.020em;
   line-height: 1.15;
 }
 
@@ -78,7 +163,7 @@
   max-width: 560px;
   color: #68665f;
   font-size: 1rem;
-  line-height: 1.7;
+  line-height: 1.5rem;
 }
 
 .read-more {
@@ -127,7 +212,7 @@
   margin: 12px 0 18px;
   color: #25241f;
   font-family: Georgia, 'Times New Roman', serif;
-  font-size: clamp(2.5rem, 8vw, 4.5rem);
+  font-size: clamp(2rem, 6vw, 4.5rem);
   font-weight: 400;
   letter-spacing: -0.055em;
   line-height: 1.05;
@@ -136,6 +221,13 @@
 .post-subtitle {
   color: #88847b;
   font-size: 0.85rem;
+}
+
+.post-author {
+  margin: 0 0 4px;
+  color: #68665f;
+  font-size: 0.9rem;
+  font-weight: 600;
 }
 
 .detail-description {
@@ -550,12 +642,26 @@
   }
 
   .page-header {
+    gap: 12px;
     padding-bottom: 32px;
   }
 
+  .page-header h1 {
+    font-size: clamp(1.75rem, 6vw, 2.5rem);
+  }
+
+  .page-header .account-avatar {
+    width: 44px;
+    height: 44px;
+    flex-basis: 44px;
+    font-size: 1.1rem;
+  }
+
+  .page-header .account-profile {
+    gap: 6px;
+  }
+
   .post {
-    grid-template-columns: 34px 1fr;
-    gap: 10px;
     padding: 30px 0 34px;
   }
 }
