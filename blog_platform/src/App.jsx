@@ -26,6 +26,99 @@ const posts = [
   },
 ]
 
+function AuthPage() {
+  const [mode, setMode] = useState('login')
+  const isRegistering = mode === 'register'
+
+  return (
+    <main className="auth-page">
+      <section className="auth-card" aria-labelledby="auth-title">
+        <a className="auth-home-link" href="/">
+          ← Back to blog
+        </a>
+        <p className="auth-eyebrow">A place for thoughtful stories</p>
+        <h1 id="auth-title">{isRegistering ? 'Create your account' : 'Welcome back'}</h1>
+        <p className="auth-intro">
+          {isRegistering
+            ? 'Join the community and make yourself at home.'
+            : 'Sign in to continue to your account.'}
+        </p>
+
+        <div className="auth-tabs" role="tablist" aria-label="Account access">
+          <button
+            className={`auth-tab${!isRegistering ? ' active' : ''}`}
+            id="login-tab"
+            type="button"
+            role="tab"
+            aria-selected={!isRegistering}
+            aria-controls="auth-form"
+            onClick={() => setMode('login')}
+          >
+            Log in
+          </button>
+          <button
+            className={`auth-tab${isRegistering ? ' active' : ''}`}
+            id="register-tab"
+            type="button"
+            role="tab"
+            aria-selected={isRegistering}
+            aria-controls="auth-form"
+            onClick={() => setMode('register')}
+          >
+            Register
+          </button>
+        </div>
+
+        <form
+          id="auth-form"
+          className="auth-form"
+          role="tabpanel"
+          aria-labelledby={isRegistering ? 'register-tab' : 'login-tab'}
+          onSubmit={(event) => event.preventDefault()}
+        >
+          {isRegistering && (
+            <label>
+              Name
+              <input
+                autoComplete="name"
+                name="name"
+                placeholder="Your name"
+                required
+                type="text"
+              />
+            </label>
+          )}
+          <label>
+            Email
+            <input
+              autoComplete="email"
+              name="email"
+              placeholder="you@example.com"
+              required
+              type="email"
+            />
+          </label>
+          <label>
+            Password
+            <input
+              autoComplete={isRegistering ? 'new-password' : 'current-password'}
+              name="password"
+              placeholder="Enter your password"
+              required
+              type="password"
+            />
+          </label>
+          <button className="auth-submit" type="button">
+            {isRegistering ? 'Create account' : 'Log in'}
+          </button>
+        </form>
+
+        <p className="auth-note">Demo screen only — account access is not enabled.</p>
+      </section>
+    </main>
+  )
+}
+
 function App() {
   const [blogPosts, setBlogPosts] = useState(posts)
   const [editing, setEditing] = useState(false)
@@ -33,6 +126,7 @@ function App() {
   const [creating, setCreating] = useState(false)
   const [newPost, setNewPost] = useState(null)
   const postId = new URLSearchParams(window.location.search).get('post')
+  const authMode = new URLSearchParams(window.location.search).get('auth')
   const selectedPost = blogPosts.find((post) => post.id === postId)
 
   function startCreating() {
@@ -87,6 +181,10 @@ function App() {
     const url = new URL(window.location.href)
     url.searchParams.delete('post')
     window.history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`)
+  }
+
+  if (authMode) {
+    return <AuthPage />
   }
 
   if (postId) {
@@ -205,6 +303,9 @@ function App() {
       </header>
 
       <div className="create-post-actions">
+        <a className="account-link" href="/?auth=login">
+          Log in / Register
+        </a>
         <button
           className="action-button"
           type="button"
