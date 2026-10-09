@@ -44,7 +44,7 @@ function getJwtSecret() {
 
 const jwtSecret = getJwtSecret()
 
-app.use(express.json({ limit: '10kb' }))
+app.use(express.json({ limit: '128kb' }))
 
 const publicUser = (user) => ({
   id: user.id,
@@ -90,6 +90,57 @@ function requireAuth(request, response, next) {
     }
     return next(error)
   }
+}
+
+function serializePost(post) {
+  return { ...post, id: String(post.id), content: JSON.parse(post.content) }
+}
+
+const selectPostById = db.prepare(`
+  SELECT id, title, subtitle, description, content, created_by, created_at
+  FROM posts
+  WHERE id = ?
+`)
+
+function parsePostId(value) {
+  if (!/^[1-9]\d*$/.test(value)) return null
+  const id = Number(value)
+  return Number.isSafeInteger(id) ? id : null
+}
+
+function validatePost(body) {
+  const title = typeof body?.title === 'string' ? body.title.trim() : ''
+  const subtitle = typeof body?.subtitle === 'string' ? body.subtitle.trim() : ''
+  const description =
+    typeof body?.description === 'string' ? body.description.trim() : ''
+  const content = Array.isArray(body?.content)
+    ? body.content.map((paragraph) =>
+        typeof paragraph === 'string' ? paragraph.trim() : '',
+      )
+    : []
+
+  if (!title || title.length > 200) {
+    return { error: 'Title is required and must be 200 characters or fewer.' }
+  }
+  if (
+    !/^\d{4}-\d{2}-\d{2}$/.test(subtitle) ||
+    Number.isNaN(Date.parse(`${subtitle}T00:00:00Z`)) ||
+    new Date(`${subtitle}T00:00:00Z`).toISOString().slice(0, 10) !== subtitle
+  ) {
+    return { error: 'Enter a valid post date.' }
+  }
+  if (!description || description.length > 2000) {
+    return { error: 'Description is required and must be 2,000 characters or fewer.' }
+  }
+  if (
+    content.length === 0 ||
+    content.some((paragraph) => !paragraph || paragraph.length > 20000) ||
+    content.join('').length > 100000
+  ) {
+    return { error: 'Add blog content with non-empty paragraphs under 20,000 characters each.' }
+  }
+
+  return { data: { title, subtitle, description, content: JSON.stringify(content) } }
 }
 
 app.post('/api/auth/register', async (request, response, next) => {
@@ -157,6 +208,67 @@ app.post('/api/auth/login', async (request, response, next) => {
 
 app.get('/api/auth/me', requireAuth, (request, response) => {
   return response.json({ user: publicUser(request.authUser) })
+})
+
+app.get('/api/posts', requireAuth, (_request, response) => {
+  const posts = db
+    .prepare('SELECT id, title, subtitle, description, content, created_by, created_at FROM posts ORDER BY id')
+    .all()
+    .map(serializePost)
+  return response.json({ posts })
+})
+
+app.get('/api/posts/:postId', requireAuth, (request, response) => {
+  const id = parsePostId(request.params.postId)
+  if (!id) return response.status(400).json({ error: 'Post ID is invalid.' })
+
+  const post = selectPostById.get(id)
+  if (!post) return response.status(404).json({ error: 'Post not found.' })
+  return response.json({ post: serializePost(post) })
+})
+
+app.post('/api/posts', requireAuth, (request, response) => {
+  const result = validatePost(request.body)
+  if (result.error) return response.status(400).json({ error: result.error })
+
+  const insert = db.prepare(`
+    INSERT INTO posts (title, subtitle, description, content, created_by)
+    VALUES (@title, @subtitle, @description, @content, @created_by)
+  `)
+  const created = insert.run({
+    ...result.data,
+    created_by: request.authUser.id,
+  })
+  const post = selectPostById.get(created.lastInsertRowid)
+  return response.status(201).json({ post: serializePost(post) })
+})
+
+app.put('/api/posts/:postId', requireAuth, (request, response) => {
+  const id = parsePostId(request.params.postId)
+  if (!id) return response.status(400).json({ error: 'Post ID is invalid.' })
+
+  const result = validatePost(request.body)
+  if (result.error) return response.status(400).json({ error: result.error })
+
+  const update = db.prepare(`
+    UPDATE posts
+    SET title = @title, subtitle = @subtitle, description = @description, content = @content
+    WHERE id = @id
+  `)
+  const updated = update.run({ ...result.data, id })
+  if (updated.changes === 0) return response.status(404).json({ error: 'Post not found.' })
+
+  const post = selectPostById.get(id)
+  return response.json({ post: serializePost(post) })
+})
+
+app.delete('/api/posts/:postId', requireAuth, (request, response) => {
+  const id = parsePostId(request.params.postId)
+  if (!id) return response.status(400).json({ error: 'Post ID is invalid.' })
+
+  const deleted = db.prepare('DELETE FROM posts WHERE id = ?').run(id)
+  if (deleted.changes === 0) return response.status(404).json({ error: 'Post not found.' })
+  return response.status(204).end()
 })
 
 app.use((error, request, response, next) => {

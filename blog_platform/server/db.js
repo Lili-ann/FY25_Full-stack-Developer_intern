@@ -37,6 +37,11 @@ db.exec(`
     FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
   );
 
+  CREATE TABLE IF NOT EXISTS app_settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+  );
+
 `)
 
 db.exec('DROP TABLE IF EXISTS sessions')
@@ -47,6 +52,54 @@ if (!postColumns.some((column) => column.name === 'created_by')) {
     ALTER TABLE posts
     ADD COLUMN created_by INTEGER REFERENCES users (id) ON DELETE SET NULL
   `)
+}
+
+const seedPosts = [
+  {
+    title: 'Finding Your Focus',
+    subtitle: '2023-06-15',
+    description:
+      'A few simple ways to make room for deeper work and bring a little more intention to your day.',
+    content: [
+      'Focus can feel hard to find when every notification and new task asks for our attention. Instead of trying to do everything at once, choose one thing that matters and give it your full attention.',
+      'A short pause, a clear workspace, and a small, realistic plan can make it easier to begin. Progress does not have to be dramatic; a little uninterrupted time can be enough to build momentum.',
+    ],
+  },
+  {
+    title: 'The Beauty of Small Moments',
+    subtitle: '2023-06-10',
+    description:
+      'A reminder to slow down, notice the everyday details, and find inspiration in the world around you.',
+    content: [
+      'Some of the moments we remember most are also the quietest: warm light across a room, a familiar song, or a conversation that makes us laugh. They are easy to miss when we are already thinking about what comes next.',
+      'Taking a moment to notice what is around us can make an ordinary day feel a little richer. Inspiration is not always somewhere far away; sometimes it is already here.',
+    ],
+  },
+]
+
+const postCount = db.prepare('SELECT COUNT(*) AS count FROM posts').get().count
+const initialPostsSeeded = db
+  .prepare("SELECT value FROM app_settings WHERE key = 'initial_posts_seeded'")
+  .get()
+
+if (!initialPostsSeeded && postCount === 0) {
+  const insertPost = db.prepare(`
+    INSERT INTO posts (title, subtitle, description, content)
+    VALUES (@title, @subtitle, @description, @content)
+  `)
+  const seedInitialPosts = db.transaction(() => {
+    for (const post of seedPosts) {
+      insertPost.run({ ...post, content: JSON.stringify(post.content) })
+    }
+    db.prepare(
+      "INSERT INTO app_settings (key, value) VALUES ('initial_posts_seeded', 'true')",
+    ).run()
+  })
+  seedInitialPosts()
+} else if (!initialPostsSeeded) {
+  db.prepare(
+    "INSERT INTO app_settings (key, value) VALUES ('initial_posts_seeded', 'true')",
+  ).run()
 }
 
 module.exports = db

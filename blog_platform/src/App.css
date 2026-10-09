@@ -41,8 +41,6 @@
 .account-name {
   color: #68665f;
   font-size: 0.9rem;
-
-
 }
 
 .create-post-editor {
@@ -294,6 +292,7 @@
 
 .comment-form textarea {
   width: 100%;
+  min-height: 120px;
   padding: 14px;
   border: 1px solid #d5d2ca;
   border-radius: 4px;
@@ -301,13 +300,6 @@
   color: #25241f;
   font: inherit;
   font-size: 0.95rem;
-}
-
-.comment-form textarea {
-  min-height: 120px;
-}
-
-.comment-form textarea {
   resize: vertical;
   line-height: 1.6;
 }
@@ -350,18 +342,6 @@
   border-radius: 8px;
   background: #fffefa;
   box-shadow: 0 20px 60px rgb(37 36 31 / 8%);
-}
-
-.auth-home-link {
-  display: inline-block;
-  margin-bottom: 40px;
-  color: #68665f;
-  font-size: 0.85rem;
-  text-decoration: none;
-}
-
-.auth-home-link:hover {
-  color: #25241f;
 }
 
 .auth-eyebrow {
@@ -443,8 +423,7 @@
 
 .auth-form input:focus-visible,
 .auth-tab:focus-visible,
-.auth-submit:focus-visible,
-.auth-home-link:focus-visible {
+.auth-submit:focus-visible {
   outline: 2px solid #68665f;
   outline-offset: 3px;
 }

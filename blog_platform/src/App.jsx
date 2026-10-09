@@ -1,31 +1,6 @@
 import { useEffect, useState } from 'react'
 import './App.css'
 
-const posts = [
-  {
-    id: 'finding-your-focus',
-    title: 'Finding Your Focus',
-    subtitle: '2023-06-15',
-    description:
-      'A few simple ways to make room for deeper work and bring a little more intention to your day.',
-    content: [
-      'Focus can feel hard to find when every notification and new task asks for our attention. Instead of trying to do everything at once, choose one thing that matters and give it your full attention.',
-      'A short pause, a clear workspace, and a small, realistic plan can make it easier to begin. Progress does not have to be dramatic; a little uninterrupted time can be enough to build momentum.',
-    ],
-  },
-  {
-    id: 'small-moments',
-    title: 'The Beauty of Small Moments',
-    subtitle: '2023-06-10',
-    description:
-      'A reminder to slow down, notice the everyday details, and find inspiration in the world around you.',
-    content: [
-      'Some of the moments we remember most are also the quietest: warm light across a room, a familiar song, or a conversation that makes us laugh. They are easy to miss when we are already thinking about what comes next.',
-      'Taking a moment to notice what is around us can make an ordinary day feel a little richer. Inspiration is not always somewhere far away; sometimes it is already here.',
-    ],
-  },
-]
-
 async function requestApi(url, options = {}) {
   const token = sessionStorage.getItem('blog.jwt')
   const response = await fetch(url, {
@@ -218,7 +193,10 @@ function App() {
   )
   const [authUser, setAuthUser] = useState(null)
   const [authError, setAuthError] = useState('')
-  const [blogPosts, setBlogPosts] = useState(posts)
+  const [blogPosts, setBlogPosts] = useState([])
+  const [postsLoading, setPostsLoading] = useState(true)
+  const [postsError, setPostsError] = useState('')
+  const [postBusy, setPostBusy] = useState(false)
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(null)
   const [creating, setCreating] = useState(false)
@@ -258,9 +236,40 @@ function App() {
     }
   }, [])
 
+  useEffect(() => {
+    if (authStatus !== 'authenticated') return undefined
+    let active = true
+
+    requestApi('/api/posts')
+      .then(({ posts: fetchedPosts }) => {
+        if (active) {
+          setBlogPosts(fetchedPosts)
+          setPostsError('')
+        }
+      })
+      .catch((error) => {
+        if (!active) return
+        if (error.status === 401) {
+          sessionStorage.removeItem('blog.jwt')
+          setAuthUser(null)
+          setAuthStatus('unauthenticated')
+        } else {
+          setPostsError(error.message)
+        }
+      })
+      .finally(() => {
+        if (active) setPostsLoading(false)
+      })
+
+    return () => {
+      active = false
+    }
+  }, [authStatus])
+
   function handleAuthenticated(user, token) {
     sessionStorage.setItem('blog.jwt', token)
     setAuthUser(user)
+    setPostsLoading(true)
     setAuthStatus('authenticated')
     const url = new URL(window.location.href)
     url.searchParams.delete('auth')
@@ -274,6 +283,15 @@ function App() {
     setEditing(false)
   }
 
+  function handlePostError(error) {
+    setPostsError(error.message)
+    if (error.status === 401) {
+      sessionStorage.removeItem('blog.jwt')
+      setAuthUser(null)
+      setAuthStatus('unauthenticated')
+    }
+  }
+
   function startCreating() {
     setNewPost({
       title: '',
@@ -284,21 +302,23 @@ function App() {
     setCreating(true)
   }
 
-  function createPost(event) {
+  async function createPost(event) {
     event.preventDefault()
-    const slug =
-      newPost.title
-        .trim()
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, '-')
-        .replace(/^-|-$/g, '') || 'new-post'
-
-    setBlogPosts((currentPosts) => [
-      ...currentPosts,
-      { ...newPost, id: `${slug}-${Date.now()}` },
-    ])
-    setCreating(false)
-    setNewPost(null)
+    setPostBusy(true)
+    setPostsError('')
+    try {
+      const { post } = await requestApi('/api/posts', {
+        method: 'POST',
+        body: JSON.stringify(newPost),
+      })
+      setBlogPosts((currentPosts) => [...currentPosts, post])
+      setCreating(false)
+      setNewPost(null)
+    } catch (error) {
+      handlePostError(error)
+    } finally {
+      setPostBusy(false)
+    }
   }
 
   function startEditing() {
@@ -306,26 +326,49 @@ function App() {
     setEditing(true)
   }
 
-  function savePost(event) {
+  async function savePost(event) {
     event.preventDefault()
-    setBlogPosts((currentPosts) =>
-      currentPosts.map((post) => (post.id === postId ? draft : post)),
-    )
-    setEditing(false)
-    setDraft(null)
+    setPostBusy(true)
+    setPostsError('')
+    try {
+      const { post } = await requestApi(`/api/posts/${postId}`, {
+        method: 'PUT',
+        body: JSON.stringify(draft),
+      })
+      setBlogPosts((currentPosts) =>
+        currentPosts.map((currentPost) =>
+          currentPost.id === post.id ? post : currentPost,
+        ),
+      )
+      setEditing(false)
+      setDraft(null)
+    } catch (error) {
+      handlePostError(error)
+    } finally {
+      setPostBusy(false)
+    }
   }
 
-  function deletePost() {
+  async function deletePost() {
     if (!window.confirm(`Delete "${selectedPost.title}"? This cannot be undone.`)) {
       return
     }
 
-    setBlogPosts((currentPosts) =>
-      currentPosts.filter((post) => post.id !== postId),
-    )
-    const url = new URL(window.location.href)
-    url.searchParams.delete('post')
-    window.history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`)
+    setPostBusy(true)
+    setPostsError('')
+    try {
+      await requestApi(`/api/posts/${postId}`, { method: 'DELETE' })
+      setBlogPosts((currentPosts) =>
+        currentPosts.filter((post) => post.id !== postId),
+      )
+      const url = new URL(window.location.href)
+      url.searchParams.delete('post')
+      window.history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`)
+    } catch (error) {
+      handlePostError(error)
+    } finally {
+      setPostBusy(false)
+    }
   }
 
   function submitComment(event) {
@@ -376,9 +419,12 @@ function App() {
         </a>
         <AccountControls user={authUser} onLogout={logout} />
         {authError && <p className="auth-error" role="alert">{authError}</p>}
-        {selectedPost ? (
+        {postsError && <p className="auth-error" role="alert">{postsError}</p>}
+        {postsLoading ? (
+          <p role="status">Loading posts…</p>
+        ) : selectedPost ? (
             editing ? (
-              <form className="post-editor" onSubmit={savePost}>
+              <form className="post-editor" onSubmit={savePost} aria-busy={postBusy}>
                 <label>
                   Title
                   <input
@@ -427,8 +473,8 @@ function App() {
                   />
                 </label>
                 <div className="editor-actions">
-                  <button className="action-button" type="submit">
-                    Save
+                  <button className="action-button" type="submit" disabled={postBusy}>
+                    {postBusy ? 'Saving…' : 'Save'}
                   </button>
                   <button
                     className="action-button secondary"
@@ -449,6 +495,7 @@ function App() {
                     className="action-button"
                     type="button"
                     onClick={startEditing}
+                    disabled={postBusy}
                   >
                     Edit
                   </button>
@@ -456,6 +503,7 @@ function App() {
                     className="action-button danger"
                     type="button"
                     onClick={deletePost}
+                    disabled={postBusy}
                   >
                     Delete
                   </button>
@@ -521,6 +569,11 @@ function App() {
 
       <div className="create-post-actions">
         <AccountControls user={authUser} onLogout={logout} />
+        {postsError && (
+          <p className="auth-error" role="alert">
+            {postsError}
+          </p>
+        )}
         <button
           className="action-button"
           type="button"
@@ -532,7 +585,7 @@ function App() {
       </div>
 
       {creating && (
-        <form className="post-editor create-post-editor" onSubmit={createPost}>
+        <form className="post-editor create-post-editor" onSubmit={createPost} aria-busy={postBusy}>
           <label>
             Title
             <input
@@ -581,8 +634,8 @@ function App() {
             />
           </label>
           <div className="editor-actions">
-            <button className="action-button" type="submit">
-              Create post
+            <button className="action-button" type="submit" disabled={postBusy}>
+              {postBusy ? 'Creating…' : 'Create post'}
             </button>
             <button
               className="action-button secondary"
@@ -599,7 +652,11 @@ function App() {
       )}
 
       <section className="post-list" aria-label="Latest blog posts">
-        {blogPosts.map((post, index) => (
+        {postsLoading ? (
+          <p role="status">Loading posts…</p>
+        ) : blogPosts.length === 0 ? (
+          <p>No posts yet. Create the first blog post.</p>
+        ) : blogPosts.map((post, index) => (
           <article className="post" id={post.id} key={post.id}>
             <span className="post-number" aria-hidden="true">
               0{index + 1}

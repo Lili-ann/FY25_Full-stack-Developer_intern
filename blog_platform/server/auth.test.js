@@ -73,6 +73,74 @@ test('registers and logs in accounts with JWT-protected identity endpoint', asyn
   assert.equal(authenticatedUser.response.status, 200)
   assert.equal(authenticatedUser.body.user.email, 'test@example.com')
 
+  const unauthenticatedPosts = await request('/api/posts')
+  assert.equal(unauthenticatedPosts.response.status, 401)
+
+  const initialPosts = await request('/api/posts', {}, registration.body.token)
+  assert.equal(initialPosts.response.status, 200)
+  assert.equal(initialPosts.body.posts.length, 2)
+  assert.deepEqual(initialPosts.body.posts[0].content, [
+    'Focus can feel hard to find when every notification and new task asks for our attention. Instead of trying to do everything at once, choose one thing that matters and give it your full attention.',
+    'A short pause, a clear workspace, and a small, realistic plan can make it easier to begin. Progress does not have to be dramatic; a little uninterrupted time can be enough to build momentum.',
+  ])
+
+  const postInput = {
+    title: 'API Test Post',
+    subtitle: '2026-10-09',
+    description: 'Testing database-backed blog post creation.',
+    content: ['First paragraph.', 'Second paragraph.'],
+  }
+  const createdPost = await request('/api/posts', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(postInput),
+  }, registration.body.token)
+  assert.equal(createdPost.response.status, 201)
+  assert.equal(createdPost.body.post.title, postInput.title)
+  assert.deepEqual(createdPost.body.post.content, postInput.content)
+  assert.equal(createdPost.body.post.created_by, registration.body.user.id)
+
+  const createdPostId = createdPost.body.post.id
+  const fetchedPost = await request(
+    `/api/posts/${createdPostId}`,
+    {},
+    registration.body.token,
+  )
+  assert.equal(fetchedPost.response.status, 200)
+  assert.equal(fetchedPost.body.post.id, createdPostId)
+
+  const updatedInput = {
+    ...postInput,
+    title: 'Updated API Test Post',
+    content: ['Updated content.'],
+  }
+  const updatedPost = await request(`/api/posts/${createdPostId}`, {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(updatedInput),
+  }, registration.body.token)
+  assert.equal(updatedPost.response.status, 200)
+  assert.equal(updatedPost.body.post.title, updatedInput.title)
+  assert.deepEqual(updatedPost.body.post.content, updatedInput.content)
+
+  const invalidPost = await request('/api/posts', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ ...postInput, subtitle: 'not-a-date' }),
+  }, registration.body.token)
+  assert.equal(invalidPost.response.status, 400)
+
+  const deletedPost = await request(`/api/posts/${createdPostId}`, {
+    method: 'DELETE',
+  }, registration.body.token)
+  assert.equal(deletedPost.response.status, 204)
+  const missingPost = await request(
+    `/api/posts/${createdPostId}`,
+    {},
+    registration.body.token,
+  )
+  assert.equal(missingPost.response.status, 404)
+
   const invalidToken = await request('/api/auth/me', {}, 'invalid.token.value')
   assert.equal(invalidToken.response.status, 401)
 
