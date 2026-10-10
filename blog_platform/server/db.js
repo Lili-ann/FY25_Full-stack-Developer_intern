@@ -56,6 +56,11 @@ db.exec(`
 
 db.exec('DROP TABLE IF EXISTS sessions')
 
+const userColumnNames = db.prepare('PRAGMA table_info(users)').all()
+if (!userColumnNames.some((column) => column.name === 'profile_image')) {
+  db.exec('ALTER TABLE users ADD COLUMN profile_image TEXT')
+}
+
 let postColumnNames = db.prepare('PRAGMA table_info(posts)').all().map((column) => column.name)
 if (postColumnNames.includes('created_by') && !postColumnNames.includes('user_id')) {
   db.exec('ALTER TABLE posts RENAME COLUMN created_by TO user_id')

@@ -9,6 +9,7 @@ const { parsePostContent } = require('./post-content')
 
 const app = express()
 const tokenLifetime = '1h'
+const maxProfileImageBytes = 2 * 1024 * 1024
 
 function getJwtSecret() {
   if (process.env.JWT_SECRET) {
@@ -45,12 +46,13 @@ function getJwtSecret() {
 
 const jwtSecret = getJwtSecret()
 
-app.use(express.json({ limit: '128kb' }))
+app.use(express.json({ limit: '3mb' }))
 
 const publicUser = (user) => ({
   id: user.id,
   name: user.name,
   email: user.email,
+  profile_image: user.profile_image ?? null,
 })
 
 function createToken(user) {
@@ -78,7 +80,7 @@ function requireAuth(request, response, next) {
     }
 
     const user = db
-      .prepare('SELECT id, name, email FROM users WHERE id = ?')
+      .prepare('SELECT id, name, email, profile_image FROM users WHERE id = ?')
       .get(Number(payload.sub))
     if (!user) {
       return response.status(401).json({ error: 'Authentication token is invalid.' })
@@ -180,7 +182,7 @@ app.post('/api/auth/register', async (request, response, next) => {
       .prepare('INSERT INTO users (name, email, password_hash) VALUES (?, ?, ?)')
       .run(name, email, passwordHash)
     const user = db
-      .prepare('SELECT id, name, email FROM users WHERE id = ?')
+      .prepare('SELECT id, name, email, profile_image FROM users WHERE id = ?')
       .get(result.lastInsertRowid)
     return response.status(201).json({ user, token: createToken(user) })
   } catch (error) {
@@ -207,7 +209,7 @@ app.post('/api/auth/login', async (request, response, next) => {
 
   try {
     const user = db
-      .prepare('SELECT id, name, email, password_hash FROM users WHERE email = ?')
+      .prepare('SELECT id, name, email, password_hash, profile_image FROM users WHERE email = ?')
       .get(email)
     if (!user || !(await bcrypt.compare(password, user.password_hash))) {
       return response.status(401).json({ error: 'Email or password is incorrect.' })
@@ -220,6 +222,51 @@ app.post('/api/auth/login', async (request, response, next) => {
 
 app.get('/api/auth/me', requireAuth, (request, response) => {
   return response.json({ user: publicUser(request.authUser) })
+})
+
+app.put('/api/auth/profile-image', requireAuth, (request, response) => {
+  const image = request.body?.image
+  if (typeof image !== 'string') {
+    return response.status(400).json({ error: 'Choose a profile image to upload.' })
+  }
+
+  const match = image.match(/^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/]+={0,2})$/)
+  if (!match) {
+    return response.status(400).json({ error: 'Profile images must be JPEG, PNG, or WebP.' })
+  }
+
+  const [, mimeType, encodedImage] = match
+  const imageBytes = Buffer.from(encodedImage, 'base64')
+  if (
+    imageBytes.length === 0 ||
+    imageBytes.length > maxProfileImageBytes ||
+    imageBytes.toString('base64') !== encodedImage
+  ) {
+    return response.status(400).json({ error: 'Profile images must be 2 MB or smaller.' })
+  }
+
+  const hasValidSignature =
+    (mimeType === 'image/png' &&
+      imageBytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) ||
+    (mimeType === 'image/jpeg' &&
+      imageBytes.length >= 3 &&
+      imageBytes[0] === 0xff &&
+      imageBytes[1] === 0xd8 &&
+      imageBytes[2] === 0xff) ||
+    (mimeType === 'image/webp' &&
+      imageBytes.length >= 12 &&
+      imageBytes.toString('ascii', 0, 4) === 'RIFF' &&
+      imageBytes.toString('ascii', 8, 12) === 'WEBP')
+  if (!hasValidSignature) {
+    return response.status(400).json({ error: 'The selected file is not a valid supported image.' })
+  }
+
+  db.prepare('UPDATE users SET profile_image = ? WHERE id = ?')
+    .run(image, request.authUser.id)
+  const user = db
+    .prepare('SELECT id, name, email, profile_image FROM users WHERE id = ?')
+    .get(request.authUser.id)
+  return response.json({ user: publicUser(user) })
 })
 
 app.get('/api/posts', requireAuth, (request, response) => {

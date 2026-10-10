@@ -57,7 +57,13 @@ test('registers and logs in accounts with JWT-protected identity endpoint', asyn
     id: 1,
     name: 'Test User',
     email: 'test@example.com',
+    profile_image: null,
   })
+  assert.ok(
+    db.prepare('PRAGMA table_info(users)')
+      .all()
+      .some((column) => column.name === 'profile_image'),
+  )
   assert.equal(typeof registration.body.token, 'string')
   assert.equal(jwt.decode(registration.body.token).sub, '1')
   assert.match(
@@ -72,6 +78,40 @@ test('registers and logs in accounts with JWT-protected identity endpoint', asyn
   )
   assert.equal(authenticatedUser.response.status, 200)
   assert.equal(authenticatedUser.body.user.email, 'test@example.com')
+  assert.equal(authenticatedUser.body.user.profile_image, null)
+
+  const unauthenticatedProfileImage = await request('/api/auth/profile-image', {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ image: 'data:image/png;base64,iVBORw0KGgo=' }),
+  })
+  assert.equal(unauthenticatedProfileImage.response.status, 401)
+
+  const invalidProfileImage = await request('/api/auth/profile-image', {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ image: 'data:image/svg+xml;base64,PHN2Zy8+' }),
+  }, registration.body.token)
+  assert.equal(invalidProfileImage.response.status, 400)
+
+  const profileImage = 'data:image/png;base64,iVBORw0KGgo='
+  const uploadedProfileImage = await request('/api/auth/profile-image', {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ image: profileImage }),
+  }, registration.body.token)
+  assert.equal(uploadedProfileImage.response.status, 200)
+  assert.equal(uploadedProfileImage.body.user.profile_image, profileImage)
+  assert.equal(
+    db.prepare('SELECT profile_image FROM users WHERE id = 1').get().profile_image,
+    profileImage,
+  )
+  const authenticatedUserWithImage = await request(
+    '/api/auth/me',
+    {},
+    registration.body.token,
+  )
+  assert.equal(authenticatedUserWithImage.body.user.profile_image, profileImage)
 
   const unauthenticatedPosts = await request('/api/posts')
   assert.equal(unauthenticatedPosts.response.status, 401)

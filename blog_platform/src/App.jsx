@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 const POSTS_PER_PAGE = 5
 import './App.css'
@@ -196,7 +196,11 @@ function AccountControls({ user, onLogout }) {
           aria-label={`Account options for ${user.name}`}
           aria-haspopup="true"
         >
-          <span className="account-avatar" aria-hidden="true">{initials}</span>
+          {user.profile_image ? (
+            <img className="account-avatar account-avatar-image" src={user.profile_image} alt="" />
+          ) : (
+            <span className="account-avatar" aria-hidden="true">{initials}</span>
+          )}
           <span className="account-name">{user.name}</span>
         </button>
         <div className="account-menu-options">
@@ -222,6 +226,8 @@ function App() {
   )
   const [authUser, setAuthUser] = useState(null)
   const [authError, setAuthError] = useState('')
+  const [profileImageError, setProfileImageError] = useState('')
+  const profileImageInput = useRef(null)
   const [blogPosts, setBlogPosts] = useState([])
   const [postsLoading, setPostsLoading] = useState(true)
   const [postsError, setPostsError] = useState('')
@@ -376,6 +382,50 @@ function App() {
     setAuthUser(null)
     setAuthStatus('unauthenticated')
     setEditing(false)
+  }
+
+  async function uploadProfileImage(event) {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (!file) return
+
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp']
+    if (!allowedTypes.includes(file.type)) {
+      setProfileImageError('Choose a JPEG, PNG, or WebP image.')
+      return
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      setProfileImageError('Profile images must be 2 MB or smaller.')
+      return
+    }
+
+    setProfileImageError('')
+    try {
+      const image = await new Promise((resolve, reject) => {
+        const reader = new FileReader()
+        reader.onload = () => {
+          if (typeof reader.result !== 'string') {
+            reject(new Error('Unable to read the selected image.'))
+            return
+          }
+          resolve(reader.result)
+        }
+        reader.onerror = () => reject(new Error('Unable to read the selected image.'))
+        reader.readAsDataURL(file)
+      })
+      const { user } = await requestApi('/api/auth/profile-image', {
+        method: 'PUT',
+        body: JSON.stringify({ image }),
+      })
+      setAuthUser(user)
+    } catch (error) {
+      setProfileImageError(error.message)
+      if (error.status === 401) {
+        sessionStorage.removeItem('blog.jwt')
+        setAuthUser(null)
+        setAuthStatus('unauthenticated')
+      }
+    }
   }
 
   function handlePostError(error) {
@@ -624,9 +674,44 @@ function App() {
         </a>
         <section className="profile-card" aria-label={`${authUser.name}'s profile`}>
           <div className="profile-identity">
-            <span className="profile-avatar" aria-hidden="true">{initials}</span>
+            <div className="profile-avatar-wrap">
+              {authUser.profile_image ? (
+                <img
+                  className="profile-avatar profile-avatar-image"
+                  src={authUser.profile_image}
+                  alt={`${authUser.name}'s profile`}
+                />
+              ) : (
+                <span className="profile-avatar" aria-hidden="true">{initials}</span>
+              )}
+              <button
+                className="profile-image-edit"
+                type="button"
+                aria-label="Choose a profile image"
+                title="Choose a profile image"
+                onClick={() => profileImageInput.current?.click()}
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                  <path d="M12 20h9" />
+                  <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4Z" />
+                </svg>
+              </button>
+              <input
+                ref={profileImageInput}
+                className="visually-hidden"
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                onChange={uploadProfileImage}
+                tabIndex={-1}
+              />
+            </div>
             <h1>{authUser.name}</h1>
             <p>{authUser.email}</p>
+            {profileImageError && (
+              <p className="auth-error profile-image-error" role="alert">
+                {profileImageError}
+              </p>
+            )}
           </div>
           <div className="profile-tabs" role="tablist" aria-label="Profile sections">
             <button
