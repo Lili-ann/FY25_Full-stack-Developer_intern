@@ -5,6 +5,7 @@ const bcrypt = require('bcryptjs')
 const express = require('express')
 const jwt = require('jsonwebtoken')
 const db = require('./db')
+const { parsePostContent } = require('./post-content')
 
 const app = express()
 const tokenLifetime = '1h'
@@ -93,7 +94,11 @@ function requireAuth(request, response, next) {
 }
 
 function serializePost(post) {
-  return { ...post, id: String(post.id), content: JSON.parse(post.content) }
+  return {
+    ...post,
+    id: String(post.id),
+    content: parsePostContent(post.content, post.id),
+  }
 }
 
 const selectPostById = db.prepare(`

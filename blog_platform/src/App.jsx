@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react'
+
+const POSTS_PER_PAGE = 5
 import './App.css'
 
 async function requestApi(url, options = {}) {
@@ -237,6 +239,7 @@ function App() {
   const [editingCommentId, setEditingCommentId] = useState(null)
   const [editingCommentText, setEditingCommentText] = useState('')
   const [postSearch, setPostSearch] = useState('')
+  const [currentPage, setCurrentPage] = useState(1)
   const searchParams = new URLSearchParams(window.location.search)
   const postId = searchParams.get('post')
   const isProfilePage = searchParams.get('profile') === '1'
@@ -263,6 +266,12 @@ function App() {
           .includes(normalizedPostSearch),
       )
     : blogPosts
+  const pageCount = Math.ceil(filteredPosts.length / POSTS_PER_PAGE)
+  const activePage = Math.min(currentPage, Math.max(pageCount, 1))
+  const visiblePosts = filteredPosts.slice(
+    (activePage - 1) * POSTS_PER_PAGE,
+    activePage * POSTS_PER_PAGE,
+  )
 
   useEffect(() => {
     let active = true
@@ -407,6 +416,8 @@ function App() {
         body: JSON.stringify(newPost),
       })
       setBlogPosts((currentPosts) => [...currentPosts, post])
+      setPostSearch('')
+      setCurrentPage(Math.ceil((blogPosts.length + 1) / POSTS_PER_PAGE))
       setCreating(false)
       setNewPost(null)
     } catch (error) {
@@ -956,7 +967,10 @@ function App() {
             id="post-search-input"
             type="search"
             value={postSearch}
-            onChange={(event) => setPostSearch(event.target.value)}
+            onChange={(event) => {
+              setPostSearch(event.target.value)
+              setCurrentPage(1)
+            }}
             placeholder="Search posts..."
             autoComplete="off"
           />
@@ -965,7 +979,10 @@ function App() {
               className="post-search-clear"
               type="button"
               aria-label="Clear search"
-              onClick={() => setPostSearch('')}
+              onClick={() => {
+                setPostSearch('')
+                setCurrentPage(1)
+              }}
             >
               ×
             </button>
@@ -1062,7 +1079,7 @@ function App() {
           <p className="post-search-empty" role="status">
             No posts found for “{postSearch.trim()}”.
           </p>
-        ) : filteredPosts.map((post) => (
+        ) : visiblePosts.map((post) => (
           <article className="post" id={post.id} key={post.id}>
             <div className="post-content">
               <h2>{post.title}</h2>
@@ -1079,6 +1096,42 @@ function App() {
           </article>
         ))}
       </section>
+      {!postsLoading && pageCount > 1 && (
+        <nav className="pagination" aria-label="Blog post pages">
+          <button
+            className="pagination-button"
+            type="button"
+            onClick={() => setCurrentPage(Math.max(1, activePage - 1))}
+            disabled={activePage === 1}
+            aria-label="Go to previous page"
+          >
+            Previous
+          </button>
+          <div className="pagination-pages">
+            {Array.from({ length: pageCount }, (_, index) => index + 1).map((page) => (
+              <button
+                className={`pagination-page${activePage === page ? ' active' : ''}`}
+                type="button"
+                key={page}
+                onClick={() => setCurrentPage(page)}
+                aria-label={`Go to page ${page}`}
+                aria-current={activePage === page ? 'page' : undefined}
+              >
+                {page}
+              </button>
+            ))}
+          </div>
+          <button
+            className="pagination-button"
+            type="button"
+            onClick={() => setCurrentPage(Math.min(pageCount, activePage + 1))}
+            disabled={activePage === pageCount}
+            aria-label="Go to next page"
+          >
+            Next
+          </button>
+        </nav>
+      )}
     </main>
   )
 }

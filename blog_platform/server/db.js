@@ -1,5 +1,6 @@
 const path = require('node:path')
 const Database = require('better-sqlite3')
+const { parsePostContent } = require('./post-content')
 
 const databasePath = process.env.DATABASE_PATH
   ? path.resolve(process.env.DATABASE_PATH)
@@ -169,5 +170,17 @@ if (!sampleIdeasSeeded) {
   })
   seedSampleIdeas()
 }
+
+const storedPosts = db.prepare('SELECT id, content FROM posts').all()
+const updatePostContent = db.prepare('UPDATE posts SET content = ? WHERE id = ?')
+const migratePostContent = db.transaction(() => {
+  for (const post of storedPosts) {
+    const normalizedContent = JSON.stringify(parsePostContent(post.content, post.id))
+    if (normalizedContent !== post.content) {
+      updatePostContent.run(normalizedContent, post.id)
+    }
+  }
+})
+migratePostContent()
 
 module.exports = db
