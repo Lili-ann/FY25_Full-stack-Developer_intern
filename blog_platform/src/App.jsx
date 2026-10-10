@@ -233,12 +233,16 @@ function App() {
   const [commentsLoading, setCommentsLoading] = useState(false)
   const [commentsError, setCommentsError] = useState('')
   const [commentBusy, setCommentBusy] = useState(false)
+  const [likeBusy, setLikeBusy] = useState(false)
   const [editingCommentId, setEditingCommentId] = useState(null)
   const [editingCommentText, setEditingCommentText] = useState('')
   const [postSearch, setPostSearch] = useState('')
   const searchParams = new URLSearchParams(window.location.search)
   const postId = searchParams.get('post')
   const isProfilePage = searchParams.get('profile') === '1'
+  const [profileTab, setProfileTab] = useState(
+    searchParams.get('tab') === 'liked' ? 'liked' : 'posts',
+  )
   const initialAuthMode =
     new URLSearchParams(window.location.search).get('auth') === 'register'
       ? 'register'
@@ -462,6 +466,38 @@ function App() {
     }
   }
 
+  async function togglePostLike() {
+    if (!selectedPost || likeBusy) return
+
+    setLikeBusy(true)
+    setPostsError('')
+    try {
+      const { liked, like_count: likeCount } = await requestApi(
+        `/api/posts/${postId}/like`,
+        { method: selectedPost.liked_by_user ? 'DELETE' : 'POST' },
+      )
+      setBlogPosts((currentPosts) =>
+        currentPosts.map((post) =>
+          post.id === postId
+            ? { ...post, liked_by_user: liked, like_count: likeCount }
+            : post,
+        ),
+      )
+    } catch (error) {
+      handlePostError(error)
+    } finally {
+      setLikeBusy(false)
+    }
+  }
+
+  function selectProfileTab(tab) {
+    setProfileTab(tab)
+    const url = new URL(window.location.href)
+    url.searchParams.set('profile', '1')
+    url.searchParams.set('tab', tab)
+    window.history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`)
+  }
+
   async function submitComment(event) {
     event.preventDefault()
     const content = commentText.trim()
@@ -564,6 +600,11 @@ function App() {
       .map((part) => part[0])
       .join('')
       .toUpperCase()
+    const profilePosts = blogPosts.filter((post) =>
+      profileTab === 'liked'
+        ? Boolean(post.liked_by_user)
+        : post.user_id === authUser.id,
+    )
 
     return (
       <main className="blog-home profile-page">
@@ -576,10 +617,57 @@ function App() {
             <h1>{authUser.name}</h1>
             <p>{authUser.email}</p>
           </div>
-          <div className="profile-tabs" aria-label="Profile sections">
-            <span className="profile-tab active">Posts</span>
-            <span className="profile-tab">Liked</span>
+          <div className="profile-tabs" role="tablist" aria-label="Profile sections">
+            <button
+              className={`profile-tab${profileTab === 'posts' ? ' active' : ''}`}
+              id="profile-posts-tab"
+              type="button"
+              role="tab"
+              aria-selected={profileTab === 'posts'}
+              aria-controls="profile-posts-panel"
+              onClick={() => selectProfileTab('posts')}
+            >
+              Posts
+            </button>
+            <button
+              className={`profile-tab${profileTab === 'liked' ? ' active' : ''}`}
+              id="profile-liked-tab"
+              type="button"
+              role="tab"
+              aria-selected={profileTab === 'liked'}
+              aria-controls="profile-posts-panel"
+              onClick={() => selectProfileTab('liked')}
+            >
+              Liked
+            </button>
           </div>
+          <section
+            className="profile-posts"
+            id="profile-posts-panel"
+            role="tabpanel"
+            aria-labelledby={profileTab === 'posts' ? 'profile-posts-tab' : 'profile-liked-tab'}
+          >
+            {postsLoading ? (
+              <p role="status">Loading posts…</p>
+            ) : profilePosts.length === 0 ? (
+              <p className="profile-empty">
+                {profileTab === 'posts'
+                  ? 'You have not created any posts yet.'
+                  : 'You have not liked any posts yet.'}
+              </p>
+            ) : (
+              <ul className="profile-post-list">
+                {profilePosts.map((post) => (
+                  <li className="profile-post-item" key={post.id}>
+                    <a href={`/?post=${post.id}`}>
+                      <h2>{post.title}</h2>
+                      <p>{post.description}</p>
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
         </section>
       </main>
     )
@@ -663,26 +751,42 @@ function App() {
               </form>
             ) : (
               <article>
-              {selectedPost.user_id === authUser.id && (
                 <div className="article-actions">
                   <button
-                    className="action-button"
+                    className={`like-button${selectedPost.liked_by_user ? ' liked' : ''}`}
                     type="button"
-                    onClick={startEditing}
-                    disabled={postBusy}
+                    onClick={togglePostLike}
+                    disabled={likeBusy}
+                    aria-pressed={Boolean(selectedPost.liked_by_user)}
+                    aria-label={`${selectedPost.liked_by_user ? 'Unlike' : 'Like'} post; ${selectedPost.like_count || 0} likes`}
                   >
-                    Edit
+                    <span aria-hidden="true">
+                      {selectedPost.liked_by_user ? '♥' : '♡'}
+                    </span>
+                    {selectedPost.liked_by_user ? 'Liked' : 'Like'}
+                    <span className="like-count">{selectedPost.like_count || 0}</span>
                   </button>
-                  <button
-                    className="action-button danger"
-                    type="button"
-                    onClick={deletePost}
-                    disabled={postBusy}
-                  >
-                    Delete
-                  </button>
+                  {selectedPost.user_id === authUser.id && (
+                    <div className="article-owner-actions">
+                      <button
+                        className="action-button"
+                        type="button"
+                        onClick={startEditing}
+                        disabled={postBusy}
+                      >
+                        Edit
+                      </button>
+                      <button
+                        className="action-button danger"
+                        type="button"
+                        onClick={deletePost}
+                        disabled={postBusy}
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  )}
                 </div>
-              )}
                 <header className="detail-header">
                   <h1>{selectedPost.title}</h1>
                   <p className="post-author">

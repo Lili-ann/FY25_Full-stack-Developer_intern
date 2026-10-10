@@ -98,7 +98,12 @@ function serializePost(post) {
 
 const selectPostById = db.prepare(`
   SELECT posts.id, posts.title, posts.subtitle, posts.description, posts.content,
-         posts.user_id, posts.created_at, users.name AS author_name
+         posts.user_id, posts.created_at, users.name AS author_name,
+         (SELECT COUNT(*) FROM post_likes WHERE post_likes.post_id = posts.id) AS like_count,
+         EXISTS (
+           SELECT 1 FROM post_likes
+           WHERE post_likes.post_id = posts.id AND post_likes.user_id = ?
+         ) AS liked_by_user
   FROM posts
   LEFT JOIN users ON users.id = posts.user_id
   WHERE posts.id = ?
@@ -212,16 +217,21 @@ app.get('/api/auth/me', requireAuth, (request, response) => {
   return response.json({ user: publicUser(request.authUser) })
 })
 
-app.get('/api/posts', requireAuth, (_request, response) => {
+app.get('/api/posts', requireAuth, (request, response) => {
   const posts = db
     .prepare(`
       SELECT posts.id, posts.title, posts.subtitle, posts.description, posts.content,
-             posts.user_id, posts.created_at, users.name AS author_name
+             posts.user_id, posts.created_at, users.name AS author_name,
+             (SELECT COUNT(*) FROM post_likes WHERE post_likes.post_id = posts.id) AS like_count,
+             EXISTS (
+               SELECT 1 FROM post_likes
+               WHERE post_likes.post_id = posts.id AND post_likes.user_id = @user_id
+             ) AS liked_by_user
       FROM posts
       LEFT JOIN users ON users.id = posts.user_id
       ORDER BY posts.id
     `)
-    .all()
+    .all({ user_id: request.authUser.id })
     .map(serializePost)
   return response.json({ posts })
 })
@@ -230,9 +240,39 @@ app.get('/api/posts/:postId', requireAuth, (request, response) => {
   const id = parsePostId(request.params.postId)
   if (!id) return response.status(400).json({ error: 'Post ID is invalid.' })
 
-  const post = selectPostById.get(id)
+  const post = selectPostById.get(request.authUser.id, id)
   if (!post) return response.status(404).json({ error: 'Post not found.' })
   return response.json({ post: serializePost(post) })
+})
+
+app.post('/api/posts/:postId/like', requireAuth, (request, response) => {
+  const id = parsePostId(request.params.postId)
+  if (!id) return response.status(400).json({ error: 'Post ID is invalid.' })
+  if (!db.prepare('SELECT 1 FROM posts WHERE id = ?').get(id)) {
+    return response.status(404).json({ error: 'Post not found.' })
+  }
+
+  db.prepare('INSERT OR IGNORE INTO post_likes (post_id, user_id) VALUES (?, ?)')
+    .run(id, request.authUser.id)
+  const likeCount = db
+    .prepare('SELECT COUNT(*) AS count FROM post_likes WHERE post_id = ?')
+    .get(id).count
+  return response.json({ liked: true, like_count: likeCount })
+})
+
+app.delete('/api/posts/:postId/like', requireAuth, (request, response) => {
+  const id = parsePostId(request.params.postId)
+  if (!id) return response.status(400).json({ error: 'Post ID is invalid.' })
+  if (!db.prepare('SELECT 1 FROM posts WHERE id = ?').get(id)) {
+    return response.status(404).json({ error: 'Post not found.' })
+  }
+
+  db.prepare('DELETE FROM post_likes WHERE post_id = ? AND user_id = ?')
+    .run(id, request.authUser.id)
+  const likeCount = db
+    .prepare('SELECT COUNT(*) AS count FROM post_likes WHERE post_id = ?')
+    .get(id).count
+  return response.json({ liked: false, like_count: likeCount })
 })
 
 app.post('/api/posts', requireAuth, (request, response) => {
@@ -247,7 +287,7 @@ app.post('/api/posts', requireAuth, (request, response) => {
     ...result.data,
     user_id: request.authUser.id,
   })
-  const post = selectPostById.get(created.lastInsertRowid)
+  const post = selectPostById.get(request.authUser.id, created.lastInsertRowid)
   return response.status(201).json({ post: serializePost(post) })
 })
 
@@ -272,7 +312,7 @@ app.put('/api/posts/:postId', requireAuth, (request, response) => {
   const updated = update.run({ ...result.data, id, user_id: request.authUser.id })
   if (updated.changes === 0) return response.status(404).json({ error: 'Post not found.' })
 
-  const post = selectPostById.get(id)
+  const post = selectPostById.get(request.authUser.id, id)
   return response.json({ post: serializePost(post) })
 })
 
@@ -338,7 +378,7 @@ function canManageComment(commentId, postId, userId) {
 app.get('/api/posts/:postId/comments', requireAuth, (request, response) => {
   const postId = parsePostId(request.params.postId)
   if (!postId) return response.status(400).json({ error: 'Post ID is invalid.' })
-  if (!selectPostById.get(postId)) {
+  if (!selectPostById.get(request.authUser.id, postId)) {
     return response.status(404).json({ error: 'Post not found.' })
   }
 
@@ -349,7 +389,7 @@ app.get('/api/posts/:postId/comments', requireAuth, (request, response) => {
 app.post('/api/posts/:postId/comments', requireAuth, (request, response) => {
   const postId = parsePostId(request.params.postId)
   if (!postId) return response.status(400).json({ error: 'Post ID is invalid.' })
-  if (!selectPostById.get(postId)) {
+  if (!selectPostById.get(request.authUser.id, postId)) {
     return response.status(404).json({ error: 'Post not found.' })
   }
 

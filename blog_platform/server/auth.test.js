@@ -76,11 +76,19 @@ test('registers and logs in accounts with JWT-protected identity endpoint', asyn
   const unauthenticatedPosts = await request('/api/posts')
   assert.equal(unauthenticatedPosts.response.status, 401)
 
+  const unauthenticatedLike = await request('/api/posts/1/like', {
+    method: 'POST',
+  })
+  assert.equal(unauthenticatedLike.response.status, 401)
+
   const initialPosts = await request('/api/posts', {}, registration.body.token)
   assert.equal(initialPosts.response.status, 200)
   const postColumns = db.prepare('PRAGMA table_info(posts)').all()
   assert.ok(postColumns.some((column) => column.name === 'user_id'))
   assert.ok(postColumns.every((column) => column.name !== 'created_by'))
+  const likeColumns = db.prepare('PRAGMA table_info(post_likes)').all()
+  assert.ok(likeColumns.some((column) => column.name === 'user_id'))
+  assert.ok(likeColumns.some((column) => column.name === 'post_id'))
   assert.equal(initialPosts.body.posts.length, 5)
   assert.deepEqual(initialPosts.body.posts.find(
     (post) => post.title === 'Finding Your Focus',
@@ -173,6 +181,65 @@ test('registers and logs in accounts with JWT-protected identity endpoint', asyn
     }),
   })
   assert.equal(secondRegistration.response.status, 201)
+
+  const secondUserLike = await request(
+    `/api/posts/${createdPostId}/like`,
+    { method: 'POST' },
+    secondRegistration.body.token,
+  )
+  assert.equal(secondUserLike.response.status, 200)
+  assert.deepEqual(secondUserLike.body, { liked: true, like_count: 1 })
+
+  const duplicateLike = await request(
+    `/api/posts/${createdPostId}/like`,
+    { method: 'POST' },
+    secondRegistration.body.token,
+  )
+  assert.deepEqual(duplicateLike.body, { liked: true, like_count: 1 })
+
+  const postsForLikingUser = await request(
+    '/api/posts',
+    {},
+    secondRegistration.body.token,
+  )
+  const likedPost = postsForLikingUser.body.posts.find(
+    (post) => post.id === createdPostId,
+  )
+  assert.equal(likedPost.liked_by_user, 1)
+  assert.equal(likedPost.like_count, 1)
+
+  const postsForAuthor = await request(
+    '/api/posts',
+    {},
+    registration.body.token,
+  )
+  const authoredPost = postsForAuthor.body.posts.find(
+    (post) => post.id === createdPostId,
+  )
+  assert.equal(authoredPost.liked_by_user, 0)
+  assert.equal(authoredPost.like_count, 1)
+
+  const removedLike = await request(
+    `/api/posts/${createdPostId}/like`,
+    { method: 'DELETE' },
+    secondRegistration.body.token,
+  )
+  assert.deepEqual(removedLike.body, { liked: false, like_count: 0 })
+
+  const reappliedLike = await request(
+    `/api/posts/${createdPostId}/like`,
+    { method: 'POST' },
+    secondRegistration.body.token,
+  )
+  assert.deepEqual(reappliedLike.body, { liked: true, like_count: 1 })
+
+  const fetchedByLikingUser = await request(
+    `/api/posts/${createdPostId}`,
+    {},
+    secondRegistration.body.token,
+  )
+  assert.equal(fetchedByLikingUser.body.post.liked_by_user, 1)
+  assert.equal(fetchedByLikingUser.body.post.like_count, 1)
 
   const nonOwnerPostUpdate = await request(
     `/api/posts/${createdPostId}`,
