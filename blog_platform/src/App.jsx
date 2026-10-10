@@ -198,7 +198,9 @@ function AccountControls({ user, onLogout }) {
           <span className="account-name">{user.name}</span>
         </button>
         <div className="account-menu-options">
-          <span className="account-menu-item">View profile</span>
+          <a className="account-menu-item" href="/?profile=1">
+            View profile
+          </a>
           <button
             className="account-menu-item account-logout"
             type="button"
@@ -234,7 +236,9 @@ function App() {
   const [editingCommentId, setEditingCommentId] = useState(null)
   const [editingCommentText, setEditingCommentText] = useState('')
   const [postSearch, setPostSearch] = useState('')
-  const postId = new URLSearchParams(window.location.search).get('post')
+  const searchParams = new URLSearchParams(window.location.search)
+  const postId = searchParams.get('post')
+  const isProfilePage = searchParams.get('profile') === '1'
   const initialAuthMode =
     new URLSearchParams(window.location.search).get('auth') === 'register'
       ? 'register'
@@ -549,6 +553,35 @@ function App() {
         initialMode={initialAuthMode}
         onAuthenticated={handleAuthenticated}
       />
+    )
+  }
+
+  if (isProfilePage) {
+    const initials = authUser.name
+      .trim()
+      .split(/\s+/)
+      .slice(0, 2)
+      .map((part) => part[0])
+      .join('')
+      .toUpperCase()
+
+    return (
+      <main className="blog-home profile-page">
+        <a className="back-link" href="/">
+          ← Back to blog
+        </a>
+        <section className="profile-card" aria-label={`${authUser.name}'s profile`}>
+          <div className="profile-identity">
+            <span className="profile-avatar" aria-hidden="true">{initials}</span>
+            <h1>{authUser.name}</h1>
+            <p>{authUser.email}</p>
+          </div>
+          <div className="profile-tabs" aria-label="Profile sections">
+            <span className="profile-tab active">Posts</span>
+            <span className="profile-tab">Liked</span>
+          </div>
+        </section>
+      </main>
     )
   }
 

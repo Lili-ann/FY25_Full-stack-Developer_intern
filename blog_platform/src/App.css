@@ -205,11 +205,13 @@ button {
 }
 
 .account-menu-item {
+  display: block;
   padding: 9px 10px;
   color: #393831;
   font: inherit;
   font-size: 0.9rem;
   text-align: left;
+  text-decoration: none;
   white-space: nowrap;
 }
 
@@ -732,6 +734,74 @@ button {
   text-align: center;
 }
 
+.profile-card {
+  width: min(100%, 720px);
+  margin: 0 auto;
+  overflow: hidden;
+  border: 1px solid #dedbd5;
+  border-radius: 8px;
+  background: #fffefa;
+}
+
+.profile-identity {
+  display: grid;
+  justify-items: center;
+  padding: clamp(36px, 8vw, 64px) 24px 40px;
+  text-align: center;
+}
+
+.profile-avatar {
+  display: grid;
+  width: 128px;
+  height: 128px;
+  place-items: center;
+  border: 1px solid #dedbd5;
+  border-radius: 50%;
+  background: #f1efe9;
+  color: #393831;
+  font-size: 2.5rem;
+  font-weight: 600;
+}
+
+.profile-identity h1 {
+  margin: 24px 0 6px;
+  color: #25241f;
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: clamp(1.8rem, 5vw, 2.5rem);
+  font-weight: 400;
+  letter-spacing: -0.04em;
+  overflow-wrap: anywhere;
+}
+
+.profile-identity p {
+  margin: 0;
+  color: #68665f;
+  font-size: 1rem;
+  overflow-wrap: anywhere;
+}
+
+.profile-tabs {
+  display: flex;
+  justify-content: center;
+  gap: clamp(32px, 10vw, 72px);
+  border-top: 1px solid #dedbd5;
+}
+
+.profile-tab {
+  min-width: 100px;
+  padding: 16px 8px 14px;
+  border-bottom: 2px solid transparent;
+  color: #88847b;
+  font-size: 0.95rem;
+  font-weight: 600;
+  text-align: center;
+}
+
+.profile-tab.active {
+  border-bottom-color: #25241f;
+  color: #25241f;
+}
+
 @media (max-width: 800px) {
   .blog-home {
     width: min(100% - 48px, 720px);
@@ -785,6 +855,10 @@ button {
   }
 
   .post-detail {
+    padding-top: 40px;
+  }
+
+  .profile-page {
     padding-top: 40px;
   }
 
@@ -897,5 +971,20 @@ button {
 
   .editor-actions .action-button {
     flex: 1 1 auto;
+  }
+
+  .profile-avatar {
+    width: 104px;
+    height: 104px;
+    font-size: 2rem;
+  }
+
+  .profile-identity {
+    padding-right: 16px;
+    padding-left: 16px;
+  }
+
+  .profile-tab {
+    min-width: 84px;
   }
 }
